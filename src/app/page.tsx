@@ -65,8 +65,8 @@ export default function Home() {
               style={{ background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)' }}>
               <Scissors className="h-3.5 w-3.5 text-white" />
             </div>
-            <span className="font-bold text-slate-900 text-sm tracking-tight">
-              Cutlist <span className="font-normal text-slate-400">Optimizer</span>
+            <span className="font-extrabold text-slate-900 text-sm tracking-tight">
+              Cutlist <span className="font-medium text-slate-400">Optimizer</span>
             </span>
           </div>
           <div className="w-px h-4 bg-slate-200" />
