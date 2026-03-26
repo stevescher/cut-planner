@@ -1,6 +1,6 @@
 # Cut Planner
 
-A web-based plywood and sheet goods cutlist optimizer. Enter your stock sheet dimensions and required panels, click **Optimize Cuts**, and get visual cutting diagrams with step-by-step cut sequences, alternative layouts, drag-and-drop repositioning, and PDF/PNG export.
+A web-based plywood and sheet goods cutlist optimizer. Enter your stock sheet dimensions and required panels, click **Plan Cuts**, and get visual cutting diagrams with step-by-step cut sequences, alternative layouts, drag-and-drop repositioning, and PDF/PNG export.
 
 **Live:** [cutplanner.stevescher.com](https://cutplanner.stevescher.com)
 **Repo:** [github.com/stevescher/cut-planner](https://github.com/stevescher/cut-planner)
@@ -35,14 +35,17 @@ A web-based plywood and sheet goods cutlist optimizer. Enter your stock sheet di
 | **Stock sheet entry** | Preset sizes (4×8, 5×5, 2×4, etc. / metric equivalents) or custom dimensions. Per-sheet label, material tag, quantity, and optional edge trim (top/right/bottom/left) |
 | **Panel entry** | Label, length, width, quantity. Color-coded dots match layout colors |
 | **Kerf setting** | Blade kerf in inches or mm — deducted from every cut edge automatically |
-| **Optimize** | Runs 15 packing strategies simultaneously, returns top results sorted by waste |
-| **Layout alternatives** | Up to 5 solutions shown as numbered tabs; "More Options" reveals additional strategies |
+| **Plan Cuts** | Runs 15 packing strategies simultaneously, returns top results sorted by waste |
+| **Layout alternatives** | Up to 5 solutions shown as numbered pills; "More Layouts" pill (next to the numbered pills) reveals additional strategies |
+| **Zoom** | − / % / + zoom controls (50–300%) in the diagram top bar; scales all sheet canvases |
 | **Color / Mono / Outline** | Three view modes: color-coded pieces, grayscale, or black outlines only |
-| **Labels toggle** | Show/hide piece name and dimensions on each piece |
+| **Labels toggle** | Show/hide piece name and dimensions centered on each piece |
+| **Dimensions toggle** | Show/hide width and height labels along each piece's top and left edges — off by default |
 | **Cut sequence** | Numbered cut lines showing the practical order of saw cuts (horizontal rip cuts first, then vertical cross-cuts) |
 | **Drag & drop** | Drag any piece to a new position; snaps to piece edges and sheet boundaries |
-| **Rotate** | Rotate button (↺) on each piece in the diagram |
-| **Anchor / Re-optimize** | Pin pieces to hold their position as a preference, then re-optimize remaining pieces around them |
+| **Rotate** | ↺ button on every piece; floats above the piece when the piece is too small to contain it |
+| **Unplaced panel fix** | When panels can't fit, a banner explains what's missing and offers "Add N sheet(s) & Re-Plan" — one click adds the estimated extra stock and re-runs the optimizer |
+| **Anchor / Re-Plan Cuts** | Pin pieces to hold their position as a preference, then re-plan remaining pieces around them |
 | **Undo / Redo** | Full history for all drag, rotate, and re-optimize actions (Cmd/Ctrl+Z / Cmd/Ctrl+Shift+Z) |
 | **Shop checklist** | Printable table view listing all pieces by sheet with checkboxes |
 | **PDF export** | Multi-page PDF: summary + panels needed (page 1), one diagram + cut list per sheet (subsequent pages) |
@@ -89,9 +92,9 @@ src/
 │   │   └── NumberInput.tsx       Smart input — accepts fractions ("12 1/2") and decimals
 │   │
 │   ├── layout-viewer/
-│   │   ├── LayoutViewer.tsx      Tab bar, summary stats, anchor banner, scroll container
-│   │   ├── SheetCanvas.tsx       SVG canvas: pieces, drag, rotate, cut lines, piece legend
-│   │   └── LayoutControls.tsx    Toolbar: Labels, Cuts, Color/Mono/Outline, More Options
+│   │   ├── LayoutViewer.tsx      Top bar (layout pills, More Layouts, zoom, view toggle), anchor banner, unplaced-panel fix banner, scroll container
+│   │   ├── SheetCanvas.tsx       SVG canvas: pieces, drag, rotate, edge dims, cut lines, piece legend
+│   │   └── LayoutControls.tsx    Toolbar: Labels, Dimensions, Cuts, Color/Mono/Outline, Release pins
 │   │
 │   ├── cut-list/
 │   │   └── CutChecklist.tsx      Printable shop checklist (table view with checkboxes)
@@ -178,7 +181,7 @@ Every real saw cut goes edge-to-edge, dividing a rectangle into exactly two piec
 3. Pack onto sheets, opening a new sheet when no existing sheet fits the current piece
 4. Return a `Solution` with total waste percentage
 
-Results are sorted by `totalWaste` ascending — best layout is always index 0. The top 5 are shown as numbered tabs; the rest are available via "More Options."
+Results are sorted by `totalWaste` ascending — best layout is always index 0. The top 5 are shown as numbered pills; the rest are revealed via the "More Layouts" pill next to them.
 
 #### Kerf
 
@@ -200,7 +203,7 @@ Five Zustand stores with no circular dependencies. Stores access each other only
 | `useLayoutStore` | solutions[], activeSolutionIndex, revealedCount, isOptimizing | setSolutions, setActive, shuffleNext |
 | `useDragStore` | `pinnedPieces: Set<string>` | togglePin, isPinned, clearPins |
 | `useHistoryStore` | past[], future[] of `{solutions, activeSolutionIndex}` | pushState, undo, redo (max 50 entries) |
-| `useViewStore` | showLabels, viewMode, showCutSequence | toggleLabels, setViewMode, toggleCutSequence |
+| `useViewStore` | showLabels, viewMode, showCutSequence, showEdgeDims, zoom | toggleLabels, setViewMode, toggleCutSequence, toggleEdgeDims, setZoom |
 
 Undo history is pushed **before** every layout mutation (drag drop, rotate, re-optimize). Undo/redo is wired to Cmd+Z / Cmd+Shift+Z in `page.tsx`.
 
@@ -305,13 +308,13 @@ Switching units resets kerf to the new system's default. All previously entered 
 - `onPointerUp` commits the move: saves undo state, writes new `x/y`, recalculates cut sequence, and auto-pins the piece
 
 ### Rotate
-The ↺ button (bottom-left corner of pieces ≥28px on screen) swaps `width`/`height`, re-centers the piece on its old center clamped to sheet bounds, toggles `rotated`, auto-pins, and recalculates cut sequence.
+The ↺ button is shown on every piece. For pieces large enough to contain it (≥28px on screen) it sits in the bottom-left corner; for smaller pieces it floats just above the piece so it's always reachable. Clicking swaps `width`/`height`, re-centers the piece on its old center clamped to sheet bounds, toggles `rotated`, auto-pins, and recalculates cut sequence.
 
 ### Pinning
 Pins are stored in `useDragStore.pinnedPieces` as a `Set<string>` with keys `"stockSheetId-sheetIndex:placementIndex"`. Pieces auto-pin on drag or rotate. An amber ⚓ badge appears on pinned pieces; clicking it unpins. "Release N" in the toolbar clears all pins.
 
-### Re-optimize (`reoptimize.ts` — `reOptimizeAroundPinned`)
-When the user clicks **Re-optimize** in the anchor banner:
+### Re-Plan Cuts (`reoptimize.ts` — `reOptimizeAroundPinned`)
+When the user clicks **Re-Plan Cuts** in the anchor banner:
 
 1. Each sheet's pieces are split into **anchored** (pinned) and **floating** (unpinned)
 2. **Pass 1 — anchored pieces:** Record each piece's center at pin time as `prefCX/prefCY`. Score all current free rects by distance from that preferred center. Place in the closest valid rect, clamped within it. Kerf is subtracted from free rects as `width+kerf × height+kerf` footprints.
