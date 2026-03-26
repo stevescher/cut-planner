@@ -15,7 +15,7 @@ function drawPageFooter(pdf: jsPDF, projectName: string, pageNum: number, totalP
   pdf.setFont('helvetica', 'normal');
   pdf.setFontSize(7);
   pdf.setTextColor(160, 160, 160);
-  pdf.text(projectName || 'Cutlist', margin, pageH - margin * 0.45);
+  pdf.text(projectName || 'Cut Planner', margin, pageH - margin * 0.45);
   pdf.text(`Page ${pageNum} of ${totalPages}`, pageW - margin, pageH - margin * 0.45, { align: 'right' });
 }
 
@@ -36,7 +36,7 @@ function drawSummaryPage(
   pdf.setFont('helvetica', 'bold');
   pdf.setFontSize(18);
   pdf.setTextColor(30, 30, 30);
-  pdf.text(projectName || 'Cutlist', margin, margin + 0.45);
+  pdf.text(projectName || 'Cut Planner', margin, margin + 0.45);
 
   // Stats row
   pdf.setFont('helvetica', 'normal');
@@ -265,5 +265,5 @@ export async function exportSolutionAsPdf(
     drawSheetPage(pdf, solution, si, stockSheets, margin, pageW, pageH, projectName, si + 2, totalPages, units);
   }
 
-  pdf.save(`${projectName || 'cutlist'}.pdf`);
+  pdf.save(`${projectName || 'cut-planner'}.pdf`);
 }

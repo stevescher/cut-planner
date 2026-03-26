@@ -10,8 +10,8 @@ const jakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Cutlist Optimizer",
-  description: "Optimize plywood and sheet goods cutting layouts to minimize waste",
+  title: "Cut Planner",
+  description: "Plan and optimize plywood and sheet goods cutting layouts to minimize waste",
 };
 
 export default function RootLayout({

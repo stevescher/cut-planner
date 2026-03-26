@@ -28,7 +28,7 @@ export function ExportMenu() {
     // Find the layout viewer main content area
     const layoutArea = document.querySelector('[data-export-target]') as HTMLElement;
     if (layoutArea) {
-      await exportElementAsPng(layoutArea, `${projectName || 'cutlist'}.png`);
+      await exportElementAsPng(layoutArea, `${projectName || 'cut-planner'}.png`);
     }
   };
 

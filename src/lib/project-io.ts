@@ -1,6 +1,6 @@
 import { ProjectData } from './optimizer/types';
 
-const STORAGE_KEY = 'plywood-optimizer-project';
+const STORAGE_KEY = 'cut-planner-project';
 
 export function saveToLocalStorage(data: ProjectData): void {
   try {
@@ -28,7 +28,7 @@ export function exportProjectToFile(data: ProjectData): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${data.name || 'cutlist-project'}.json`;
+  a.download = `${data.name || 'cut-planner-project'}.json`;
   a.click();
   URL.revokeObjectURL(url);
 }

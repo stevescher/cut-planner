@@ -2,7 +2,7 @@ import { toPng, toJpeg } from 'html-to-image';
 
 export async function exportElementAsPng(
   element: HTMLElement,
-  filename: string = 'cutlist-layout.png'
+  filename: string = 'cut-planner-layout.png'
 ): Promise<void> {
   const dataUrl = await toPng(element, {
     backgroundColor: '#ffffff',
@@ -13,7 +13,7 @@ export async function exportElementAsPng(
 
 export async function exportElementAsJpeg(
   element: HTMLElement,
-  filename: string = 'cutlist-layout.jpg'
+  filename: string = 'cut-planner-layout.jpg'
 ): Promise<void> {
   const dataUrl = await toJpeg(element, {
     backgroundColor: '#ffffff',

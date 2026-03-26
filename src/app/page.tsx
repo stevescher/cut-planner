@@ -66,7 +66,7 @@ export default function Home() {
               <Scissors className="h-3.5 w-3.5 text-white" />
             </div>
             <span className="font-extrabold text-slate-900 text-sm tracking-tight">
-              Cutlist <span className="font-medium text-slate-400">Optimizer</span>
+              Cut <span className="font-medium text-slate-400">Planner</span>
             </span>
           </div>
           <div className="w-px h-4 bg-slate-200" />

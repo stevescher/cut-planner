@@ -1,9 +1,9 @@
-# Cutlist Optimizer
+# Cut Planner
 
 A web-based plywood and sheet goods cutlist optimizer. Enter your stock sheet dimensions and required panels, click **Optimize Cuts**, and get visual cutting diagrams with step-by-step cut sequences, alternative layouts, drag-and-drop repositioning, and PDF/PNG export.
 
-**Live:** [plywood-optimizer.vercel.app](https://plywood-optimizer.vercel.app)
-**Repo:** [github.com/stevescher/plywood-optimizer](https://github.com/stevescher/plywood-optimizer)
+**Live:** [cut-planner.vercel.app](https://cut-planner.vercel.app)
+**Repo:** [github.com/stevescher/cut-planner](https://github.com/stevescher/cut-planner)
 
 ---
 
@@ -364,7 +364,7 @@ All dimensions use the active unit setting (imperial fractions or metric mm).
 
 ### Auto-save
 `useAutoSave` subscribes to `useProjectStore` and calls `saveToLocalStorage()` on every change. On first mount it loads from localStorage to restore the previous session.
-Storage key: `plywood-optimizer-project`
+Storage key: `cut-planner-project`
 
 ### Manual save/load
 `ProjectMenu` provides:
@@ -415,8 +415,8 @@ shadcn v4 uses **base-ui** instead of Radix. The critical difference — composi
 **Prerequisites:** Node.js 18+, npm
 
 ```bash
-git clone https://github.com/stevescher/plywood-optimizer.git
-cd plywood-optimizer
+git clone https://github.com/stevescher/cut-planner.git
+cd cut-planner
 npm install
 npm run dev       # http://localhost:3000
 ```
@@ -445,7 +445,7 @@ npm run lint
 
 ### Auto-deploy
 Every push to `main` triggers a Vercel production deployment automatically via the GitHub → Vercel integration.
-URL: **[plywood-optimizer.vercel.app](https://plywood-optimizer.vercel.app)**
+URL: **[cut-planner.vercel.app](https://cut-planner.vercel.app)**
 
 ### Manual deploy
 ```bash
