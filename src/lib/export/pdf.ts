@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf';
 import { Solution, StockSheet, Panel } from '@/lib/optimizer/types';
-import { formatDimension } from '@/lib/fractions';
+import { formatDisplay, unitSuffix, Units } from '@/lib/fractions';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -28,7 +28,10 @@ function drawSummaryPage(
   projectName: string,
   margin: number,
   pageW: number,
+  units: Units,
 ) {
+  const sfx = unitSuffix(units);
+  const fmt = (v: number) => formatDisplay(v, units);
   // Title
   pdf.setFont('helvetica', 'bold');
   pdf.setFontSize(18);
@@ -82,8 +85,8 @@ function drawSummaryPage(
   for (let i = 0; i < panels.length; i++) {
     const p = panels[i];
     pdf.text(p.label || `Panel ${i + 1}`, margin + 0.18, y);
-    pdf.text(`${formatDimension(p.length)}"`, margin + 2.5, y);
-    pdf.text(`${formatDimension(p.width)}"`, margin + 3.5, y);
+    pdf.text(`${fmt(p.length)}${sfx}`, margin + 2.5, y);
+    pdf.text(`${fmt(p.width)}${sfx}`, margin + 3.5, y);
     pdf.text(String(p.quantity), margin + 4.5, y);
     y += 0.27;
   }
@@ -102,7 +105,10 @@ function drawSheetPage(
   projectName: string,
   pageNum: number,
   totalPages: number,
+  units: Units,
 ) {
+  const sfx = unitSuffix(units);
+  const fmt = (v: number) => formatDisplay(v, units);
   const sheet = solution.sheets[sheetIndex];
   const stockSheet = stockSheets.find((s) => s.id === sheet.stockSheetId);
   if (!stockSheet) return;
@@ -114,7 +120,7 @@ function drawSheetPage(
   pdf.setFont('helvetica', 'bold');
   pdf.setFontSize(12);
   pdf.setTextColor(30, 30, 30);
-  const sheetTitle = `Sheet ${sheetIndex + 1}${stockSheet.label ? ' — ' + stockSheet.label : ''} (${formatDimension(sheetW)}" × ${formatDimension(sheetH)}")`;
+  const sheetTitle = `Sheet ${sheetIndex + 1}${stockSheet.label ? ' — ' + stockSheet.label : ''} (${fmt(sheetW)}${sfx} \u00d7 ${fmt(sheetH)}${sfx})`;
   pdf.text(sheetTitle, margin, margin + 0.3);
 
   pdf.setFont('helvetica', 'normal');
@@ -136,8 +142,8 @@ function drawSheetPage(
   // Dimension labels
   pdf.setFontSize(8);
   pdf.setTextColor(80, 80, 80);
-  pdf.text(`${formatDimension(sheetW)}"`, drawX + drawW / 2, drawY - 0.1, { align: 'center' });
-  pdf.text(`${formatDimension(sheetH)}"`, drawX - 0.15, drawY + drawH / 2, {
+  pdf.text(`${fmt(sheetW)}${sfx}`, drawX + drawW / 2, drawY - 0.1, { align: 'center' });
+  pdf.text(`${fmt(sheetH)}${sfx}`, drawX - 0.15, drawY + drawH / 2, {
     align: 'center',
     angle: 90,
   });
@@ -184,7 +190,7 @@ function drawSheetPage(
       pdf.setFontSize(5.5);
       pdf.setTextColor(60, 60, 60);
       pdf.text(
-        `${formatDimension(p.width)}" \u00d7 ${formatDimension(p.height)}"`,
+        `${fmt(p.width)}${sfx} \u00d7 ${fmt(p.height)}${sfx}`,
         px + pw / 2,
         py + ph / 2 + 0.11,
         { align: 'center' }
@@ -224,8 +230,8 @@ function drawSheetPage(
     if (y > pageH - margin - 0.2) return; // overflow guard
     pdf.text(String(pi + 1), margin, y);
     pdf.text(p.label || `—`, margin + 0.25, y);
-    pdf.text(`${formatDimension(p.width)}"`, margin + 2.8, y);
-    pdf.text(`${formatDimension(p.height)}"`, margin + 3.7, y);
+    pdf.text(`${fmt(p.width)}${sfx}`, margin + 2.8, y);
+    pdf.text(`${fmt(p.height)}${sfx}`, margin + 3.7, y);
     pdf.text(p.rotated ? 'Yes' : 'No', margin + 4.6, y);
     y += 0.22;
   });
@@ -240,6 +246,7 @@ export async function exportSolutionAsPdf(
   stockSheets: StockSheet[],
   projectName: string,
   panels: Panel[] = [],
+  units: Units = 'imperial',
 ): Promise<void> {
   const pdf = new jsPDF({ orientation: 'landscape', unit: 'in', format: 'letter' });
   const pageW = 11;
@@ -249,13 +256,13 @@ export async function exportSolutionAsPdf(
   const totalPages = 1 + solution.sheets.length;
 
   // Page 1: summary + panels needed
-  drawSummaryPage(pdf, solution, panels, projectName, margin, pageW);
+  drawSummaryPage(pdf, solution, panels, projectName, margin, pageW, units);
   drawPageFooter(pdf, projectName, 1, totalPages, pageW, pageH, margin);
 
   // Pages 2+: one per sheet
   for (let si = 0; si < solution.sheets.length; si++) {
     pdf.addPage();
-    drawSheetPage(pdf, solution, si, stockSheets, margin, pageW, pageH, projectName, si + 2, totalPages);
+    drawSheetPage(pdf, solution, si, stockSheets, margin, pageW, pageH, projectName, si + 2, totalPages, units);
   }
 
   pdf.save(`${projectName || 'cutlist'}.pdf`);

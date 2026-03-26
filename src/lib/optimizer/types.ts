@@ -119,13 +119,25 @@ export interface StockPreset {
   width: number;
 }
 
-export const STOCK_PRESETS: StockPreset[] = [
-  { label: "4' × 8' (48 × 96)", length: 96, width: 48 },
-  { label: "5' × 5' (60 × 60)", length: 60, width: 60 },
-  { label: "4' × 4' (48 × 48)", length: 48, width: 48 },
-  { label: "2' × 4' (24 × 48)", length: 48, width: 24 },
-  { label: "2' × 2' (24 × 24)", length: 24, width: 24 },
+export const STOCK_PRESETS_IMPERIAL: StockPreset[] = [
+  { label: "4' × 8' (48 × 96\")", length: 96, width: 48 },
+  { label: "5' × 5' (60 × 60\")", length: 60, width: 60 },
+  { label: "4' × 4' (48 × 48\")", length: 48, width: 48 },
+  { label: "2' × 4' (24 × 48\")", length: 48, width: 24 },
+  { label: "2' × 2' (24 × 24\")", length: 24, width: 24 },
 ];
+
+/** Metric sheet sizes stored in inches internally (values ÷ 25.4) */
+export const STOCK_PRESETS_METRIC: StockPreset[] = [
+  { label: '2440 × 1220 mm', length: 2440 / 25.4, width: 1220 / 25.4 },
+  { label: '2500 × 1250 mm', length: 2500 / 25.4, width: 1250 / 25.4 },
+  { label: '1220 × 1220 mm', length: 1220 / 25.4, width: 1220 / 25.4 },
+  { label: '2440 × 610 mm',  length: 2440 / 25.4, width:  610 / 25.4 },
+  { label: '1220 × 610 mm',  length: 1220 / 25.4, width:  610 / 25.4 },
+];
+
+/** @deprecated use STOCK_PRESETS_IMPERIAL */
+export const STOCK_PRESETS = STOCK_PRESETS_IMPERIAL;
 
 /** Serializable project data for save/load */
 export interface ProjectData {

@@ -9,7 +9,7 @@ import {
   GuillotineNode,
 } from './types';
 import { createTree, placeInTree, collectPlacements } from './guillotine';
-import { deriveCutSequence } from './cut-sequence';
+import { deriveCutSequenceFromPlacements } from './reoptimize';
 import { generateStrategies, sortPanels } from './strategies';
 import { getColor } from '../colors';
 
@@ -176,7 +176,11 @@ function solveWithStrategy(
   // Build sheet layouts
   const sheetLayouts: SheetLayout[] = openSheets.map((os) => {
     const placements = collectPlacements(os.tree);
-    const cutSequence = deriveCutSequence(os.tree);
+    const cutSequence = deriveCutSequenceFromPlacements(
+      placements,
+      os.stockSheet.length,
+      os.stockSheet.width,
+    );
     const totalArea = os.stockSheet.length * os.stockSheet.width;
     const usedArea = placements.reduce((sum, p) => sum + p.width * p.height, 0);
     const wastePercent = ((totalArea - usedArea) / totalArea) * 100;

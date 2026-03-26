@@ -1,15 +1,18 @@
 import { create } from 'zustand';
 import { nanoid } from 'nanoid';
 import { StockSheet, Panel, ProjectData } from '@/lib/optimizer/types';
+import { Units } from '@/lib/fractions';
 
 interface ProjectState {
   projectName: string;
   stockSheets: StockSheet[];
   panels: Panel[];
   kerf: number;
+  units: Units;
 
   setProjectName: (name: string) => void;
   setKerf: (kerf: number) => void;
+  setUnits: (units: Units) => void;
 
   addStockSheet: (sheet?: Partial<StockSheet>) => void;
   updateStockSheet: (id: string, updates: Partial<StockSheet>) => void;
@@ -56,9 +59,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   stockSheets: [createDefaultStockSheet()],
   panels: [createDefaultPanel()],
   kerf: 0.125, // 1/8 inch
+  units: 'imperial' as Units,
 
   setProjectName: (name) => set({ projectName: name }),
   setKerf: (kerf) => set({ kerf }),
+  setUnits: (units) => set({ units }),
 
   addStockSheet: (sheet) =>
     set((state) => ({
@@ -115,10 +120,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     }),
 
   reset: () =>
-    set({
+    set((s) => ({
       projectName: 'Untitled Project',
       stockSheets: [createDefaultStockSheet()],
       panels: [createDefaultPanel()],
-      kerf: 0.125,
-    }),
+      kerf: s.units === 'metric' ? 3 / 25.4 : 0.125,
+    })),
 }));

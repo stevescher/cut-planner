@@ -7,7 +7,8 @@ import { useDragStore } from '@/store/useDragStore';
 import { useLayoutStore } from '@/store/useLayoutStore';
 import { useHistoryStore } from '@/store/useHistoryStore';
 import { getColor } from '@/lib/colors';
-import { formatDimension } from '@/lib/fractions';
+import { formatDisplay, unitSuffix } from '@/lib/fractions';
+import { useProjectStore } from '@/store/useProjectStore';
 import { deriveCutSequenceFromPlacements } from '@/lib/optimizer/reoptimize';
 
 interface SheetCanvasProps {
@@ -21,6 +22,9 @@ const MAX_WIDTH = 800;
 
 export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber }: SheetCanvasProps) {
   const { showLabels, viewMode, showCutSequence } = useViewStore();
+  const { units } = useProjectStore();
+  const fmt = (v: number) => formatDisplay(v, units);
+  const sfx = unitSuffix(units);
   const monoMode = viewMode === 'mono';
   const outlineMode = viewMode === 'outline';
   const { togglePin, isPinned } = useDragStore();
@@ -236,7 +240,7 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber }: SheetCanva
           Sheet {sheetNumber}
           {stockSheet.label && ` — ${stockSheet.label}`}
           <span className="text-slate-400 font-normal ml-2">
-            ({formatDimension(sheetW)}&quot; &times; {formatDimension(sheetH)}&quot;)
+            ({fmt(sheetW)}{sfx} &times; {fmt(sheetH)}{sfx})
           </span>
         </h4>
         <span className="text-xs text-slate-400">
@@ -408,7 +412,7 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber }: SheetCanva
                     fill={dimFill} fontSize={9}
                     style={{ pointerEvents: 'none', userSelect: 'none' }}
                   >
-                    {formatDimension(p.width)}&quot; &times; {formatDimension(p.height)}&quot;
+                    {fmt(p.width)}{sfx} &times; {fmt(p.height)}{sfx}
                   </text>
                 </>
               )}
@@ -444,7 +448,7 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber }: SheetCanva
         {/* Sheet dimension labels */}
         <text x={PADDING + (sheetW * scale) / 2} y={PADDING - 10}
           textAnchor="middle" fill="#94a3b8" fontSize={11}>
-          {formatDimension(sheetW)}&quot;
+          {fmt(sheetW)}{sfx}
         </text>
         <text
           x={PADDING - 10} y={PADDING + (sheetH * scale) / 2}
@@ -452,7 +456,7 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber }: SheetCanva
           transform={`rotate(-90, ${PADDING - 10}, ${PADDING + (sheetH * scale) / 2})`}
           fill="#94a3b8" fontSize={11}
         >
-          {formatDimension(sheetH)}&quot;
+          {fmt(sheetH)}{sfx}
         </text>
       </svg>
 
@@ -486,7 +490,7 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber }: SheetCanva
                   }}
                 />
                 <span>
-                  {label} — {formatDimension(width)}&quot;&thinsp;&times;&thinsp;{formatDimension(height)}&quot;
+                  {label} — {fmt(width)}{sfx}&thinsp;&times;&thinsp;{fmt(height)}{sfx}
                   {count > 1 && <strong className="text-slate-700 ml-1">&times;{count}</strong>}
                 </span>
               </div>

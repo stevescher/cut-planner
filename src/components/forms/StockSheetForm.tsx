@@ -9,7 +9,7 @@ import { Plus, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 import { useState } from 'react';
 
 export function StockSheetForm() {
-  const { stockSheets, addStockSheet, updateStockSheet, removeStockSheet } =
+  const { stockSheets, addStockSheet, updateStockSheet, removeStockSheet, units } =
     useProjectStore();
   const [expandedTrim, setExpandedTrim] = useState<string | null>(null);
 
@@ -22,6 +22,7 @@ export function StockSheetForm() {
           <div className="flex gap-2 items-center">
             <StockPresetSelect
               onSelect={(length, width) => updateStockSheet(sheet.id, { length, width })}
+              units={units}
             />
             <Input
               value={sheet.label}
@@ -47,8 +48,8 @@ export function StockSheetForm() {
               <NumberInput
                 value={sheet.length}
                 onChange={(v) => updateStockSheet(sheet.id, { length: v })}
-                placeholder="96"
-                fractional
+                placeholder={units === 'metric' ? '2440' : '96'}
+                units={units}
               />
             </div>
             <div>
@@ -56,8 +57,8 @@ export function StockSheetForm() {
               <NumberInput
                 value={sheet.width}
                 onChange={(v) => updateStockSheet(sheet.id, { width: v })}
-                placeholder="48"
-                fractional
+                placeholder={units === 'metric' ? '1220' : '48'}
+                units={units}
               />
             </div>
             <div>
@@ -102,7 +103,7 @@ export function StockSheetForm() {
                     value={sheet[side]}
                     onChange={(v) => updateStockSheet(sheet.id, { [side]: v })}
                     placeholder="0"
-                    fractional
+                    units={units}
                   />
                 </div>
               ))}

@@ -7,7 +7,7 @@ import { Plus, Trash2 } from 'lucide-react';
 import { getColor } from '@/lib/colors';
 
 export function PanelForm() {
-  const { panels, addPanel, updatePanel, removePanel } = useProjectStore();
+  const { panels, addPanel, updatePanel, removePanel, units } = useProjectStore();
 
   return (
     <div className="space-y-1.5">
@@ -44,15 +44,15 @@ export function PanelForm() {
             <NumberInput
               value={panel.length}
               onChange={(v) => updatePanel(panel.id, { length: v })}
-              placeholder='24"'
-              fractional
+              placeholder={units === 'metric' ? '600' : '24'}
+              units={units}
               className="h-8 text-sm"
             />
             <NumberInput
               value={panel.width}
               onChange={(v) => updatePanel(panel.id, { width: v })}
-              placeholder='12"'
-              fractional
+              placeholder={units === 'metric' ? '300' : '12'}
+              units={units}
               className="h-8 text-sm"
             />
             <NumberInput

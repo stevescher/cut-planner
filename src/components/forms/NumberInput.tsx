@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
-import { parseDimension, formatDimension } from '@/lib/fractions';
+import { parseDimension, formatDimension, parseInput, formatDisplay, Units } from '@/lib/fractions';
 
 interface NumberInputProps {
   value: number;
@@ -10,8 +10,10 @@ interface NumberInputProps {
   placeholder?: string;
   className?: string;
   min?: number;
-  /** If true, shows fractional display (e.g. "12 1/2") */
+  /** If true, uses fractional/metric display (for dimension fields). */
   fractional?: boolean;
+  /** Unit system — if provided, overrides fractional parsing for dimensions. */
+  units?: Units;
 }
 
 export function NumberInput({
@@ -21,37 +23,43 @@ export function NumberInput({
   className,
   min = 0,
   fractional = false,
+  units,
 }: NumberInputProps) {
   const [focused, setFocused] = useState(false);
   const [rawText, setRawText] = useState('');
 
-  const displayValue = focused
-    ? rawText
-    : fractional
-      ? (value === 0 ? '' : formatDimension(value))
-      : value === 0
-        ? ''
-        : String(value);
+  // Determine display format
+  const getDisplay = useCallback((v: number): string => {
+    if (v === 0) return '';
+    if (units) return formatDisplay(v, units);
+    if (fractional) return formatDimension(v);
+    return String(v);
+  }, [units, fractional]);
+
+  const displayValue = focused ? rawText : getDisplay(value);
 
   const handleFocus = useCallback(() => {
     setFocused(true);
-    setRawText(
-      fractional ? (value === 0 ? '' : formatDimension(value)) : value === 0 ? '' : String(value)
-    );
-  }, [value, fractional]);
+    setRawText(getDisplay(value));
+  }, [value, getDisplay]);
 
   const handleBlur = useCallback(() => {
     setFocused(false);
-    const parsed = fractional ? parseDimension(rawText) : parseFloat(rawText);
+    let parsed: number;
+    if (units) {
+      parsed = parseInput(rawText, units);
+    } else if (fractional) {
+      parsed = parseDimension(rawText);
+    } else {
+      parsed = parseFloat(rawText);
+    }
     if (!isNaN(parsed) && parsed >= min) {
       onChange(parsed);
     }
-  }, [rawText, onChange, min, fractional]);
+  }, [rawText, onChange, min, fractional, units]);
 
   const handleChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      setRawText(e.target.value);
-    },
+    (e: React.ChangeEvent<HTMLInputElement>) => setRawText(e.target.value),
     []
   );
 

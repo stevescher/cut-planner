@@ -15,13 +15,13 @@ import { Download, FileText, Image } from 'lucide-react';
 
 export function ExportMenu() {
   const { solutions, activeSolutionIndex } = useLayoutStore();
-  const { stockSheets, panels, projectName } = useProjectStore();
+  const { stockSheets, panels, projectName, units } = useProjectStore();
 
   const activeSolution = solutions[activeSolutionIndex];
   if (!activeSolution) return null;
 
   const handlePdfExport = async () => {
-    await exportSolutionAsPdf(activeSolution, stockSheets, projectName, panels);
+    await exportSolutionAsPdf(activeSolution, stockSheets, projectName, panels, units);
   };
 
   const handlePngExport = async () => {
