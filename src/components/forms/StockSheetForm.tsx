@@ -14,30 +14,25 @@ export function StockSheetForm() {
   const [expandedTrim, setExpandedTrim] = useState<string | null>(null);
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-foreground">Stock Sheets</h3>
-        <Button variant="outline" size="sm" onClick={() => addStockSheet()}>
-          <Plus className="h-3.5 w-3.5 mr-1" />
-          Add
-        </Button>
-      </div>
+    <div className="space-y-2.5">
+      {stockSheets.map((sheet, idx) => (
+        <div key={sheet.id} className="form-card space-y-3">
 
-      {stockSheets.map((sheet) => (
-        <div
-          key={sheet.id}
-          className="border rounded-lg p-3 space-y-2 bg-card"
-        >
+          {/* Row 1: preset + label + delete */}
           <div className="flex gap-2 items-center">
             <StockPresetSelect
-              onSelect={(length, width) => {
-                updateStockSheet(sheet.id, { length, width });
-              }}
+              onSelect={(length, width) => updateStockSheet(sheet.id, { length, width })}
+            />
+            <Input
+              value={sheet.label}
+              onChange={(e) => updateStockSheet(sheet.id, { label: e.target.value })}
+              placeholder={`Sheet ${idx + 1}`}
+              className="flex-1 h-9 text-sm"
             />
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0"
+              className="h-8 w-8 text-slate-400 hover:text-red-500 hover:bg-red-50 shrink-0"
               onClick={() => removeStockSheet(sheet.id)}
               disabled={stockSheets.length <= 1}
             >
@@ -45,9 +40,10 @@ export function StockSheetForm() {
             </Button>
           </div>
 
+          {/* Row 2: dimensions */}
           <div className="grid grid-cols-4 gap-2">
             <div>
-              <label className="text-xs text-muted-foreground">Length</label>
+              <label className="field-label">Length</label>
               <NumberInput
                 value={sheet.length}
                 onChange={(v) => updateStockSheet(sheet.id, { length: v })}
@@ -56,7 +52,7 @@ export function StockSheetForm() {
               />
             </div>
             <div>
-              <label className="text-xs text-muted-foreground">Width</label>
+              <label className="field-label">Width</label>
               <NumberInput
                 value={sheet.width}
                 onChange={(v) => updateStockSheet(sheet.id, { width: v })}
@@ -65,47 +61,29 @@ export function StockSheetForm() {
               />
             </div>
             <div>
-              <label className="text-xs text-muted-foreground">Qty</label>
+              <label className="field-label">Qty</label>
               <NumberInput
                 value={sheet.quantity}
-                onChange={(v) =>
-                  updateStockSheet(sheet.id, { quantity: Math.max(1, Math.round(v)) })
-                }
+                onChange={(v) => updateStockSheet(sheet.id, { quantity: Math.max(1, Math.round(v)) })}
                 placeholder="1"
                 min={1}
               />
             </div>
             <div>
-              <label className="text-xs text-muted-foreground">Material</label>
+              <label className="field-label">Material</label>
               <Input
                 value={sheet.material}
-                onChange={(e) =>
-                  updateStockSheet(sheet.id, { material: e.target.value })
-                }
+                onChange={(e) => updateStockSheet(sheet.id, { material: e.target.value })}
                 placeholder="Plywood"
-                className="h-9"
+                className="h-9 text-sm"
               />
             </div>
           </div>
 
-          <div>
-            <label className="text-xs text-muted-foreground">Label</label>
-            <Input
-              value={sheet.label}
-              onChange={(e) =>
-                updateStockSheet(sheet.id, { label: e.target.value })
-              }
-              placeholder="e.g. 4x8 Birch"
-              className="h-9"
-            />
-          </div>
-
           {/* Edge trim toggle */}
           <button
-            onClick={() =>
-              setExpandedTrim(expandedTrim === sheet.id ? null : sheet.id)
-            }
-            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+            onClick={() => setExpandedTrim(expandedTrim === sheet.id ? null : sheet.id)}
+            className="flex items-center gap-1.5 text-xs font-medium text-slate-400 hover:text-indigo-500 transition-colors"
           >
             {expandedTrim === sheet.id ? (
               <ChevronUp className="h-3 w-3" />
@@ -116,28 +94,32 @@ export function StockSheetForm() {
           </button>
 
           {expandedTrim === sheet.id && (
-            <div className="grid grid-cols-4 gap-2">
-              {(['trimTop', 'trimRight', 'trimBottom', 'trimLeft'] as const).map(
-                (side) => (
-                  <div key={side}>
-                    <label className="text-xs text-muted-foreground capitalize">
-                      {side.replace('trim', '')}
-                    </label>
-                    <NumberInput
-                      value={sheet[side]}
-                      onChange={(v) =>
-                        updateStockSheet(sheet.id, { [side]: v })
-                      }
-                      placeholder="0"
-                      fractional
-                    />
-                  </div>
-                )
-              )}
+            <div className="grid grid-cols-4 gap-2 pt-1 border-t border-slate-100">
+              {(['trimTop', 'trimRight', 'trimBottom', 'trimLeft'] as const).map((side) => (
+                <div key={side}>
+                  <label className="field-label">{side.replace('trim', '')}</label>
+                  <NumberInput
+                    value={sheet[side]}
+                    onChange={(v) => updateStockSheet(sheet.id, { [side]: v })}
+                    placeholder="0"
+                    fractional
+                  />
+                </div>
+              ))}
             </div>
           )}
         </div>
       ))}
+
+      <button
+        onClick={() => addStockSheet()}
+        className="w-full h-9 rounded-xl border-2 border-dashed border-slate-300 text-xs font-semibold text-slate-400
+                   hover:border-indigo-400 hover:text-indigo-500 hover:bg-indigo-50/50
+                   transition-all flex items-center justify-center gap-1.5"
+      >
+        <Plus className="h-3.5 w-3.5" />
+        Add Stock Sheet
+      </button>
     </div>
   );
 }

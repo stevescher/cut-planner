@@ -1,14 +1,14 @@
 'use client';
 
 import { useCallback, useRef, useState } from 'react';
-import { SheetLayout, StockSheet, Placement } from '@/lib/optimizer/types';
+import { SheetLayout, StockSheet } from '@/lib/optimizer/types';
 import { useViewStore } from '@/store/useViewStore';
 import { useDragStore } from '@/store/useDragStore';
 import { useLayoutStore } from '@/store/useLayoutStore';
 import { useHistoryStore } from '@/store/useHistoryStore';
 import { getColor } from '@/lib/colors';
 import { formatDimension } from '@/lib/fractions';
-import { Pin, PinOff } from 'lucide-react';
+import { deriveCutSequenceFromPlacements } from '@/lib/optimizer/reoptimize';
 
 interface SheetCanvasProps {
   sheetLayout: SheetLayout;
@@ -20,7 +20,9 @@ const PADDING = 40;
 const MAX_WIDTH = 800;
 
 export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber }: SheetCanvasProps) {
-  const { showLabels, monoMode, showCutSequence } = useViewStore();
+  const { showLabels, viewMode, showCutSequence } = useViewStore();
+  const monoMode = viewMode === 'mono';
+  const outlineMode = viewMode === 'outline';
   const { togglePin, isPinned } = useDragStore();
   const svgRef = useRef<SVGSVGElement>(null);
   const [dragState, setDragState] = useState<{
@@ -38,6 +40,8 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber }: SheetCanva
   const svgW = sheetW * scale + PADDING * 2;
   const svgH = sheetH * scale + PADDING * 2;
 
+  // ── Coordinate helpers ─────────────────────────────────────────────────────
+
   const getSvgPoint = useCallback(
     (clientX: number, clientY: number) => {
       const svg = svgRef.current;
@@ -51,12 +55,46 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber }: SheetCanva
     [scale]
   );
 
+  const snapToEdges = useCallback(
+    (rawX: number, rawY: number, placementIndex: number) => {
+      const p = sheetLayout.placements[placementIndex];
+      const threshold = 8 / scale;
+      const others = sheetLayout.placements.filter((_, pi) => pi !== placementIndex);
+
+      const xCandidates = [
+        0,
+        sheetW - p.width,
+        ...others.flatMap((o) => [o.x, o.x + o.width, o.x - p.width, o.x + o.width - p.width]),
+      ];
+      const yCandidates = [
+        0,
+        sheetH - p.height,
+        ...others.flatMap((o) => [o.y, o.y + o.height, o.y - p.height, o.y + o.height - p.height]),
+      ];
+
+      let x = rawX;
+      let y = rawY;
+      for (const cx of xCandidates) {
+        if (Math.abs(rawX - cx) <= threshold) { x = cx; break; }
+      }
+      for (const cy of yCandidates) {
+        if (Math.abs(rawY - cy) <= threshold) { y = cy; break; }
+      }
+      return {
+        x: Math.max(0, Math.min(x, sheetW - p.width)),
+        y: Math.max(0, Math.min(y, sheetH - p.height)),
+      };
+    },
+    [sheetLayout.placements, sheetW, sheetH, scale]
+  );
+
+  // ── Drag handlers ──────────────────────────────────────────────────────────
+
   const handlePointerDown = useCallback(
     (e: React.PointerEvent, placementIndex: number) => {
       if (e.button !== 0) return;
       const p = sheetLayout.placements[placementIndex];
       const svgPt = getSvgPoint(e.clientX, e.clientY);
-
       setDragState({
         placementIndex,
         offsetX: svgPt.x - p.x,
@@ -64,7 +102,6 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber }: SheetCanva
         currentX: p.x,
         currentY: p.y,
       });
-
       (e.target as Element).setPointerCapture(e.pointerId);
       e.preventDefault();
     },
@@ -77,69 +114,60 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber }: SheetCanva
       const svgPt = getSvgPoint(e.clientX, e.clientY);
       const p = sheetLayout.placements[dragState.placementIndex];
 
-      // Clamp to sheet bounds
-      let newX = svgPt.x - dragState.offsetX;
-      let newY = svgPt.y - dragState.offsetY;
-      newX = Math.max(0, Math.min(newX, sheetW - p.width));
-      newY = Math.max(0, Math.min(newY, sheetH - p.height));
+      let rawX = svgPt.x - dragState.offsetX;
+      let rawY = svgPt.y - dragState.offsetY;
+      rawX = Math.max(0, Math.min(rawX, sheetW - p.width));
+      rawY = Math.max(0, Math.min(rawY, sheetH - p.height));
 
+      const { x: newX, y: newY } = snapToEdges(rawX, rawY, dragState.placementIndex);
       setDragState((prev) => prev ? { ...prev, currentX: newX, currentY: newY } : null);
     },
-    [dragState, getSvgPoint, sheetLayout.placements, sheetW, sheetH]
+    [dragState, getSvgPoint, sheetLayout.placements, sheetW, sheetH, snapToEdges]
   );
 
   const handlePointerUp = useCallback(() => {
     if (!dragState) return;
 
     const p = sheetLayout.placements[dragState.placementIndex];
-    const newX = dragState.currentX;
-    const newY = dragState.currentY;
+    const snappedX = dragState.currentX;
+    const snappedY = dragState.currentY;
 
-    // Snap to nearest grid position (1" grid)
-    const snappedX = Math.round(newX * 4) / 4;
-    const snappedY = Math.round(newY * 4) / 4;
-
-    // Check if position actually changed meaningfully
-    if (Math.abs(snappedX - p.x) > 0.1 || Math.abs(snappedY - p.y) > 0.1) {
-      // Save current state for undo
+    if (Math.abs(snappedX - p.x) > 0.05 || Math.abs(snappedY - p.y) > 0.05) {
       const layoutStore = useLayoutStore.getState();
-      const historyStore = useHistoryStore.getState();
-      historyStore.pushState({
+      useHistoryStore.getState().pushState({
         solutions: layoutStore.solutions,
         activeSolutionIndex: layoutStore.activeSolutionIndex,
       });
 
-      // Update the placement position
       const updatedSolutions = layoutStore.solutions.map((sol, si) => {
         if (si !== layoutStore.activeSolutionIndex) return sol;
         return {
           ...sol,
           sheets: sol.sheets.map((sheet) => {
-            if (
-              sheet.stockSheetId !== stockSheet.id ||
-              sheet.sheetIndex !== sheetLayout.sheetIndex
-            )
+            if (sheet.stockSheetId !== stockSheet.id || sheet.sheetIndex !== sheetLayout.sheetIndex)
               return sheet;
+            const newPlacements = sheet.placements.map((pl, pi) => {
+              if (pi !== dragState!.placementIndex) return pl;
+              return { ...pl, x: snappedX, y: snappedY };
+            });
             return {
               ...sheet,
-              placements: sheet.placements.map((pl, pi) => {
-                if (pi !== dragState.placementIndex) return pl;
-                return { ...pl, x: snappedX, y: snappedY };
-              }),
+              placements: newPlacements,
+              cutSequence: deriveCutSequenceFromPlacements(newPlacements, sheetW, sheetH),
             };
           }),
         };
       });
       layoutStore.setSolutions(updatedSolutions);
 
-      // Auto-pin the moved piece
       if (!isPinned(sheetKey, dragState.placementIndex)) {
         togglePin(sheetKey, dragState.placementIndex);
       }
     }
-
     setDragState(null);
-  }, [dragState, sheetLayout, stockSheet.id, sheetKey, isPinned, togglePin]);
+  }, [dragState, sheetLayout, stockSheet.id, sheetKey, sheetW, sheetH, isPinned, togglePin]);
+
+  // ── Pin click ──────────────────────────────────────────────────────────────
 
   const handlePinClick = useCallback(
     (e: React.MouseEvent, placementIndex: number) => {
@@ -149,17 +177,69 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber }: SheetCanva
     [sheetKey, togglePin]
   );
 
+  // ── Rotate piece ───────────────────────────────────────────────────────────
+
+  const handleRotate = useCallback(
+    (e: React.MouseEvent, placementIndex: number) => {
+      e.stopPropagation();
+      e.preventDefault();
+
+      const layoutStore = useLayoutStore.getState();
+      useHistoryStore.getState().pushState({
+        solutions: layoutStore.solutions,
+        activeSolutionIndex: layoutStore.activeSolutionIndex,
+      });
+
+      const updatedSolutions = layoutStore.solutions.map((sol, si) => {
+        if (si !== layoutStore.activeSolutionIndex) return sol;
+        return {
+          ...sol,
+          sheets: sol.sheets.map((sheet) => {
+            if (sheet.stockSheetId !== stockSheet.id || sheet.sheetIndex !== sheetLayout.sheetIndex)
+              return sheet;
+
+            const newPlacements = sheet.placements.map((pl, pi) => {
+              if (pi !== placementIndex) return pl;
+              const newW = pl.height;
+              const newH = pl.width;
+              // Keep same center, clamped to sheet bounds
+              const newX = Math.max(0, Math.min(pl.x + (pl.width - newW) / 2, sheetW - newW));
+              const newY = Math.max(0, Math.min(pl.y + (pl.height - newH) / 2, sheetH - newH));
+              return { ...pl, x: newX, y: newY, width: newW, height: newH, rotated: !pl.rotated };
+            });
+
+            return {
+              ...sheet,
+              placements: newPlacements,
+              cutSequence: deriveCutSequenceFromPlacements(newPlacements, sheetW, sheetH),
+            };
+          }),
+        };
+      });
+
+      layoutStore.setSolutions(updatedSolutions);
+
+      // Auto-pin on rotate
+      if (!isPinned(sheetKey, placementIndex)) {
+        togglePin(sheetKey, placementIndex);
+      }
+    },
+    [sheetLayout, stockSheet.id, sheetKey, sheetW, sheetH, isPinned, togglePin]
+  );
+
+  // ── Rendering ──────────────────────────────────────────────────────────────
+
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <h4 className="text-sm font-medium">
+        <h4 className="text-sm font-semibold text-slate-700">
           Sheet {sheetNumber}
           {stockSheet.label && ` — ${stockSheet.label}`}
-          <span className="text-muted-foreground ml-2">
-            ({formatDimension(sheetW)} x {formatDimension(sheetH)})
+          <span className="text-slate-400 font-normal ml-2">
+            ({formatDimension(sheetW)}&quot; &times; {formatDimension(sheetH)}&quot;)
           </span>
         </h4>
-        <span className="text-xs text-muted-foreground">
+        <span className="text-xs text-slate-400">
           Waste: {sheetLayout.wastePercent.toFixed(1)}%
         </span>
       </div>
@@ -169,64 +249,40 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber }: SheetCanva
         width={svgW}
         height={svgH}
         viewBox={`0 0 ${svgW} ${svgH}`}
-        className="border rounded bg-white select-none"
+        className="rounded-xl border border-slate-200 bg-white select-none shadow-sm"
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
       >
-        {/* Sheet outline */}
+        {/* Sheet background */}
         <rect
-          x={PADDING}
-          y={PADDING}
-          width={sheetW * scale}
-          height={sheetH * scale}
-          fill="#f9fafb"
-          stroke="#d1d5db"
-          strokeWidth={1}
+          x={PADDING} y={PADDING}
+          width={sheetW * scale} height={sheetH * scale}
+          fill={outlineMode ? '#fafafa' : '#f8fafc'}
+          stroke="#cbd5e1"
+          strokeWidth={1.5}
         />
 
         {/* Trim areas */}
         {stockSheet.trimTop > 0 && (
-          <rect
-            x={PADDING}
-            y={PADDING}
-            width={sheetW * scale}
-            height={stockSheet.trimTop * scale}
-            fill="#fee2e2"
-            opacity={0.4}
-          />
+          <rect x={PADDING} y={PADDING} width={sheetW * scale} height={stockSheet.trimTop * scale}
+            fill="#fee2e2" opacity={0.5} />
         )}
         {stockSheet.trimBottom > 0 && (
-          <rect
-            x={PADDING}
-            y={PADDING + (sheetH - stockSheet.trimBottom) * scale}
-            width={sheetW * scale}
-            height={stockSheet.trimBottom * scale}
-            fill="#fee2e2"
-            opacity={0.4}
-          />
+          <rect x={PADDING} y={PADDING + (sheetH - stockSheet.trimBottom) * scale}
+            width={sheetW * scale} height={stockSheet.trimBottom * scale}
+            fill="#fee2e2" opacity={0.5} />
         )}
         {stockSheet.trimLeft > 0 && (
-          <rect
-            x={PADDING}
-            y={PADDING}
-            width={stockSheet.trimLeft * scale}
-            height={sheetH * scale}
-            fill="#fee2e2"
-            opacity={0.4}
-          />
+          <rect x={PADDING} y={PADDING} width={stockSheet.trimLeft * scale} height={sheetH * scale}
+            fill="#fee2e2" opacity={0.5} />
         )}
         {stockSheet.trimRight > 0 && (
-          <rect
-            x={PADDING + (sheetW - stockSheet.trimRight) * scale}
-            y={PADDING}
-            width={stockSheet.trimRight * scale}
-            height={sheetH * scale}
-            fill="#fee2e2"
-            opacity={0.4}
-          />
+          <rect x={PADDING + (sheetW - stockSheet.trimRight) * scale} y={PADDING}
+            width={stockSheet.trimRight * scale} height={sheetH * scale}
+            fill="#fee2e2" opacity={0.5} />
         )}
 
-        {/* Placed pieces */}
+        {/* ── Pieces ───────────────────────────────────────────────────── */}
         {sheetLayout.placements.map((p, i) => {
           const isDragging = dragState?.placementIndex === i;
           const pinned = isPinned(sheetKey, i);
@@ -239,69 +295,120 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber }: SheetCanva
           const ph = p.height * scale;
           const color = monoMode ? getColor(i, true) : p.color;
 
+          // Visual style by mode
+          let fill: string;
+          let stroke: string;
+          let strokeWidth: number;
+          let labelFill: string;
+          let dimFill: string;
+
+          if (outlineMode) {
+            fill = 'white';
+            stroke = pinned ? '#f59e0b' : '#1e293b'; // black outlines
+            strokeWidth = pinned ? 2.5 : 1.5;
+            labelFill = '#1e293b';
+            dimFill = '#64748b';
+          } else if (monoMode) {
+            fill = color;
+            stroke = pinned ? '#f59e0b' : '#555';
+            strokeWidth = pinned ? 2.5 : 1;
+            labelFill = '#000';
+            dimFill = '#555';
+          } else {
+            fill = color;
+            stroke = pinned ? '#f59e0b' : 'rgba(255,255,255,0.6)';
+            strokeWidth = pinned ? 2.5 : 1;
+            labelFill = '#fff';
+            dimFill = 'rgba(255,255,255,0.8)';
+          }
+
+          const showRotate = pw >= 28 && ph >= 28;
+          const rotateBtnSize = 9;
+          const rotateBtnX = px + rotateBtnSize + 3;
+          const rotateBtnY = py + ph - rotateBtnSize - 3;
+
           return (
             <g
               key={`${p.panelId}-${i}`}
-              style={{ cursor: 'grab', opacity: isDragging ? 0.7 : 0.85 }}
+              style={{ cursor: isDragging ? 'grabbing' : 'grab', opacity: isDragging ? 0.75 : 0.9 }}
               onPointerDown={(e) => handlePointerDown(e, i)}
             >
               <rect
-                x={px}
-                y={py}
-                width={pw}
-                height={ph}
-                fill={color}
-                stroke={pinned ? '#f59e0b' : monoMode ? '#333' : '#fff'}
-                strokeWidth={pinned ? 2.5 : monoMode ? 1.5 : 1}
-                rx={1}
+                x={px} y={py} width={pw} height={ph}
+                fill={fill}
+                stroke={stroke}
+                strokeWidth={strokeWidth}
+                rx={2}
               />
 
-              {/* Pin indicator */}
-              {pinned && (
+              {/* Rotate button — bottom-left corner */}
+              {showRotate && (
                 <g
-                  onClick={(e) => handlePinClick(e, i)}
+                  onClick={(e) => handleRotate(e, i)}
                   style={{ cursor: 'pointer' }}
                 >
                   <circle
-                    cx={px + pw - 10}
-                    cy={py + 10}
-                    r={8}
-                    fill="#f59e0b"
+                    cx={rotateBtnX} cy={rotateBtnY} r={rotateBtnSize}
+                    fill="rgba(0,0,0,0.25)"
+                    className="hover:fill-[rgba(0,0,0,0.45)]"
                   />
                   <text
-                    x={px + pw - 10}
-                    y={py + 10}
-                    textAnchor="middle"
-                    dominantBaseline="central"
-                    fill="#fff"
-                    className="text-[8px]"
+                    x={rotateBtnX} y={rotateBtnY}
+                    textAnchor="middle" dominantBaseline="central"
+                    fill="white" fontSize={10}
+                    style={{ pointerEvents: 'none', userSelect: 'none' }}
                   >
-                    P
+                    ↺
                   </text>
                 </g>
               )}
 
-              {showLabels && pw > 30 && ph > 20 && (
+              {/* Pin badge — top-right corner */}
+              {pinned && (
+                <g onClick={(e) => handlePinClick(e, i)} style={{ cursor: 'pointer' }}>
+                  <circle cx={px + pw - 10} cy={py + 10} r={8} fill="#f59e0b" />
+                  <text
+                    x={px + pw - 10} y={py + 10}
+                    textAnchor="middle" dominantBaseline="central"
+                    fill="white" fontSize={9} fontWeight="bold"
+                    style={{ pointerEvents: 'none' }}
+                  >
+                    ⚓
+                  </text>
+                </g>
+              )}
+
+              {/* Cut-list index badge — top-left corner */}
+              {pw >= 18 && ph >= 16 && (
+                <text
+                  x={px + 5} y={py + 5}
+                  textAnchor="start" dominantBaseline="hanging"
+                  fill={outlineMode ? '#475569' : 'rgba(255,255,255,0.65)'}
+                  fontSize={8} fontWeight="700"
+                  style={{ pointerEvents: 'none', userSelect: 'none' }}
+                >
+                  {i + 1}
+                </text>
+              )}
+
+              {/* Labels */}
+              {showLabels && pw > 36 && ph > 24 && (
                 <>
                   <text
-                    x={px + pw / 2}
-                    y={py + ph / 2 - 6}
-                    textAnchor="middle"
-                    dominantBaseline="middle"
-                    className="text-[10px] font-medium pointer-events-none"
-                    fill={monoMode ? '#000' : '#fff'}
+                    x={px + pw / 2} y={py + ph / 2 - 6}
+                    textAnchor="middle" dominantBaseline="middle"
+                    fill={labelFill} fontSize={11} fontWeight="600"
+                    style={{ pointerEvents: 'none', userSelect: 'none' }}
                   >
-                    {p.label || p.panelId.slice(0, 6)}
+                    {p.label || `Panel ${i + 1}`}
                   </text>
                   <text
-                    x={px + pw / 2}
-                    y={py + ph / 2 + 8}
-                    textAnchor="middle"
-                    dominantBaseline="middle"
-                    className="text-[8px] pointer-events-none"
-                    fill={monoMode ? '#555' : 'rgba(255,255,255,0.8)'}
+                    x={px + pw / 2} y={py + ph / 2 + 8}
+                    textAnchor="middle" dominantBaseline="middle"
+                    fill={dimFill} fontSize={9}
+                    style={{ pointerEvents: 'none', userSelect: 'none' }}
                   >
-                    {formatDimension(p.width)} x {formatDimension(p.height)}
+                    {formatDimension(p.width)}&quot; &times; {formatDimension(p.height)}&quot;
                   </text>
                 </>
               )}
@@ -309,57 +416,84 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber }: SheetCanva
           );
         })}
 
-        {/* Cut sequence overlay */}
-        {showCutSequence &&
-          sheetLayout.cutSequence.map((cut) => (
-            <g key={`cut-${cut.stepNumber}`}>
-              <line
-                x1={PADDING + cut.x1 * scale}
-                y1={PADDING + cut.y1 * scale}
-                x2={PADDING + cut.x2 * scale}
-                y2={PADDING + cut.y2 * scale}
-                stroke="#ef4444"
-                strokeWidth={1.5}
-                strokeDasharray="4 2"
-              />
-              <circle
-                cx={PADDING + ((cut.x1 + cut.x2) / 2) * scale}
-                cy={PADDING + ((cut.y1 + cut.y2) / 2) * scale}
-                r={8}
-                fill="#ef4444"
-              />
-              <text
-                x={PADDING + ((cut.x1 + cut.x2) / 2) * scale}
-                y={PADDING + ((cut.y1 + cut.y2) / 2) * scale}
-                textAnchor="middle"
-                dominantBaseline="central"
-                fill="#fff"
-                className="text-[9px] font-bold pointer-events-none"
-              >
-                {cut.stepNumber}
-              </text>
-            </g>
-          ))}
+        {/* ── Cut sequence overlay ──────────────────────────────────────── */}
+        {showCutSequence && sheetLayout.cutSequence.map((cut) => (
+          <g key={`cut-${cut.stepNumber}`}>
+            <line
+              x1={PADDING + cut.x1 * scale} y1={PADDING + cut.y1 * scale}
+              x2={PADDING + cut.x2 * scale} y2={PADDING + cut.y2 * scale}
+              stroke="#ef4444" strokeWidth={1.5} strokeDasharray="4 2"
+            />
+            <circle
+              cx={PADDING + ((cut.x1 + cut.x2) / 2) * scale}
+              cy={PADDING + ((cut.y1 + cut.y2) / 2) * scale}
+              r={8} fill="#ef4444"
+            />
+            <text
+              x={PADDING + ((cut.x1 + cut.x2) / 2) * scale}
+              y={PADDING + ((cut.y1 + cut.y2) / 2) * scale}
+              textAnchor="middle" dominantBaseline="central"
+              fill="white" fontSize={9} fontWeight="bold"
+              style={{ pointerEvents: 'none' }}
+            >
+              {cut.stepNumber}
+            </text>
+          </g>
+        ))}
 
-        {/* Dimension labels on sheet edges */}
-        <text
-          x={PADDING + (sheetW * scale) / 2}
-          y={PADDING - 8}
-          textAnchor="middle"
-          className="text-[11px] fill-muted-foreground"
-        >
+        {/* Sheet dimension labels */}
+        <text x={PADDING + (sheetW * scale) / 2} y={PADDING - 10}
+          textAnchor="middle" fill="#94a3b8" fontSize={11}>
           {formatDimension(sheetW)}&quot;
         </text>
         <text
-          x={PADDING - 8}
-          y={PADDING + (sheetH * scale) / 2}
+          x={PADDING - 10} y={PADDING + (sheetH * scale) / 2}
           textAnchor="middle"
-          transform={`rotate(-90, ${PADDING - 8}, ${PADDING + (sheetH * scale) / 2})`}
-          className="text-[11px] fill-muted-foreground"
+          transform={`rotate(-90, ${PADDING - 10}, ${PADDING + (sheetH * scale) / 2})`}
+          fill="#94a3b8" fontSize={11}
         >
           {formatDimension(sheetH)}&quot;
         </text>
       </svg>
+
+      {/* ── Piece legend (deduplicated) ──────────────────────────────────── */}
+      {(() => {
+        // Group by panelId → keep first occurrence's color/dims, count multiples
+        const seen = new Map<string, { label: string; width: number; height: number; color: string; count: number; idx: number }>();
+        sheetLayout.placements.forEach((p, i) => {
+          if (!seen.has(p.panelId)) {
+            seen.set(p.panelId, {
+              label: p.label || `Panel ${i + 1}`,
+              width: p.width,
+              height: p.height,
+              color: monoMode ? getColor(i, true) : p.color,
+              count: 1,
+              idx: i,
+            });
+          } else {
+            seen.get(p.panelId)!.count++;
+          }
+        });
+        return (
+          <div className="flex flex-wrap gap-x-5 gap-y-1 pt-1">
+            {[...seen.values()].map(({ label, width, height, color, count, idx }) => (
+              <div key={idx} className="flex items-center gap-1.5 text-xs text-slate-500">
+                <span
+                  className="inline-block w-3 h-3 rounded-sm shrink-0"
+                  style={{
+                    backgroundColor: outlineMode ? 'white' : color,
+                    border: outlineMode ? '1.5px solid #1e293b' : '1px solid rgba(0,0,0,0.1)',
+                  }}
+                />
+                <span>
+                  {label} — {formatDimension(width)}&quot;&thinsp;&times;&thinsp;{formatDimension(height)}&quot;
+                  {count > 1 && <strong className="text-slate-700 ml-1">&times;{count}</strong>}
+                </span>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
     </div>
   );
 }

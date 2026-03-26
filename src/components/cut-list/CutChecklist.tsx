@@ -11,14 +11,19 @@ interface CutChecklistProps {
 export function CutChecklist({ solution, stockSheets }: CutChecklistProps) {
   return (
     <div className="p-6 space-y-6 print:p-0">
-      <div className="flex items-center justify-between print:hidden">
-        <h3 className="text-lg font-semibold">Cut Checklist</h3>
-        <button
-          onClick={() => window.print()}
-          className="px-3 py-1.5 text-sm bg-foreground text-background rounded-md hover:opacity-90"
-        >
-          Print Checklist
-        </button>
+      <div className="print:hidden space-y-2">
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-semibold">Shop Checklist</h3>
+          <button
+            onClick={() => window.print()}
+            className="px-3 py-1.5 text-sm bg-foreground text-background rounded-md hover:opacity-90"
+          >
+            Print
+          </button>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Take this list to the shop and check off each piece as you cut it. Organized by sheet so you can work through one sheet at a time.
+        </p>
       </div>
 
       {solution.sheets.map((sheet, si) => {

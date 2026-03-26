@@ -28,7 +28,7 @@ export function NumberInput({
   const displayValue = focused
     ? rawText
     : fractional
-      ? formatDimension(value)
+      ? (value === 0 ? '' : formatDimension(value))
       : value === 0
         ? ''
         : String(value);
@@ -36,7 +36,7 @@ export function NumberInput({
   const handleFocus = useCallback(() => {
     setFocused(true);
     setRawText(
-      fractional ? formatDimension(value) : value === 0 ? '' : String(value)
+      fractional ? (value === 0 ? '' : formatDimension(value)) : value === 0 ? '' : String(value)
     );
   }, [value, fractional]);
 

@@ -1,21 +1,23 @@
 import { create } from 'zustand';
 
+export type ViewMode = 'color' | 'mono' | 'outline';
+
 interface ViewState {
   showLabels: boolean;
-  monoMode: boolean;
+  viewMode: ViewMode;
   showCutSequence: boolean;
 
   toggleLabels: () => void;
-  toggleMonoMode: () => void;
+  setViewMode: (mode: ViewMode) => void;
   toggleCutSequence: () => void;
 }
 
 export const useViewStore = create<ViewState>((set) => ({
   showLabels: true,
-  monoMode: false,
+  viewMode: 'color',
   showCutSequence: false,
 
   toggleLabels: () => set((s) => ({ showLabels: !s.showLabels })),
-  toggleMonoMode: () => set((s) => ({ monoMode: !s.monoMode })),
+  setViewMode: (mode) => set({ viewMode: mode }),
   toggleCutSequence: () => set((s) => ({ showCutSequence: !s.showCutSequence })),
 }));

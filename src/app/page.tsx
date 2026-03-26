@@ -16,7 +16,6 @@ import { useOptimizer } from '@/hooks/useOptimizer';
 import { Button } from '@/components/ui/button';
 import { Scissors, Undo2, Redo2 } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
 
 export default function Home() {
   useAutoSave();
@@ -44,6 +43,7 @@ export default function Home() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
+
   const { stockSheets, panels } = useProjectStore();
   const { isOptimizing, solutions } = useLayoutStore();
   const optimize = useOptimizer();
@@ -53,55 +53,91 @@ export default function Home() {
     panels.some((p) => p.length > 0 && p.width > 0);
 
   return (
-    <div className="flex flex-col h-screen">
-      {/* Header */}
-      <header className="border-b px-4 py-2 flex items-center justify-between bg-background shrink-0">
+    <div className="flex flex-col h-screen bg-white">
+      {/* ── Header ─────────────────────────────────────────────────────── */}
+      <header className="h-12 border-b border-slate-200 px-4 flex items-center justify-between bg-white shrink-0 z-10"
+        style={{ boxShadow: '0 1px 0 rgba(0,0,0,0.06)' }}>
         <div className="flex items-center gap-3">
-          <h1 className="text-lg font-bold text-foreground">Cutlist Optimizer</h1>
-          <Separator orientation="vertical" className="h-6" />
+          {/* Logo mark */}
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center"
+              style={{ background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)' }}>
+              <Scissors className="h-3.5 w-3.5 text-white" />
+            </div>
+            <span className="font-bold text-slate-900 text-sm tracking-tight">
+              Cutlist <span className="font-normal text-slate-400">Optimizer</span>
+            </span>
+          </div>
+          <div className="w-px h-4 bg-slate-200" />
           <ProjectMenu />
         </div>
+
         <div className="flex items-center gap-2">
           {solutions.length > 0 && (
             <>
               <LayoutControls />
+              <div className="w-px h-5 bg-slate-200" />
               <ExportMenu />
             </>
           )}
         </div>
       </header>
 
-      {/* Main content */}
+      {/* ── Body ───────────────────────────────────────────────────────── */}
       <div className="flex flex-1 min-h-0">
-        {/* Sidebar */}
-        <aside className="w-[380px] border-r bg-muted/30 shrink-0 flex flex-col">
+
+        {/* ── Sidebar ──────────────────────────────────────────────────── */}
+        <aside className="w-[360px] shrink-0 flex flex-col border-r border-slate-200"
+          style={{ background: 'var(--sidebar)' }}>
+
           <ScrollArea className="flex-1">
-            <div className="p-4 space-y-6">
-              <StockSheetForm />
-              <Separator />
-              <PanelForm />
-              <Separator />
-              <KerfSetting />
+            <div className="p-4 space-y-5">
+
+              {/* Stock Sheets */}
+              <section>
+                <div className="section-header mb-3">Stock Sheets</div>
+                <StockSheetForm />
+              </section>
+
+              {/* Divider */}
+              <div className="border-t border-slate-200/70" />
+
+              {/* Panels */}
+              <section>
+                <div className="section-header mb-3">Required Panels</div>
+                <PanelForm />
+              </section>
+
+              {/* Divider */}
+              <div className="border-t border-slate-200/70" />
+
+              {/* Settings */}
+              <section>
+                <div className="section-header mb-3">Blade Settings</div>
+                <KerfSetting />
+              </section>
+
             </div>
           </ScrollArea>
 
-          <div className="p-4 border-t">
-            <Button
-              className="w-full"
-              size="lg"
+          {/* ── Optimize CTA ───────────────────────────────────────────── */}
+          <div className="p-4 border-t border-slate-200 bg-white">
+            <button
+              className="btn-optimize w-full h-11 rounded-xl text-sm flex items-center justify-center gap-2"
               onClick={optimize}
               disabled={!canOptimize || isOptimizing}
             >
-              <Scissors className="h-4 w-4 mr-2" />
-              {isOptimizing ? 'Optimizing...' : 'Optimize Cuts'}
-            </Button>
+              <Scissors className="h-4 w-4" />
+              {isOptimizing ? 'Optimizing…' : 'Optimize Cuts'}
+            </button>
           </div>
         </aside>
 
-        {/* Main area */}
-        <main className="flex-1 min-w-0 bg-muted/10">
+        {/* ── Main viewer ──────────────────────────────────────────────── */}
+        <main className="flex-1 min-w-0 bg-slate-50/50">
           <LayoutViewer />
         </main>
+
       </div>
     </div>
   );

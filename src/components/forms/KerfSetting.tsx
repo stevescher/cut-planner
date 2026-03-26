@@ -8,18 +8,18 @@ export function KerfSetting() {
 
   return (
     <div className="flex items-center gap-3">
-      <label className="text-sm font-medium text-foreground whitespace-nowrap">
-        Blade Kerf
-      </label>
-      <div className="w-24">
+      <div className="w-24 shrink-0">
         <NumberInput
           value={kerf}
           onChange={setKerf}
-          placeholder='1/8"'
+          placeholder="1/8"
           fractional
         />
       </div>
-      <span className="text-xs text-muted-foreground">inches</span>
+      <div>
+        <p className="text-xs font-medium text-slate-600">Blade kerf in inches</p>
+        <p className="text-[11px] text-slate-400">Fractions (1/8) or decimals (0.125)</p>
+      </div>
     </div>
   );
 }
