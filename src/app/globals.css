@@ -128,3 +128,17 @@
     @apply font-sans;
   }
 }
+
+/* Print styles for cut checklist */
+@media print {
+  header, aside, [data-slot="dropdown-menu"], button:not([type="checkbox"]) {
+    display: none !important;
+  }
+  main {
+    width: 100% !important;
+    margin: 0 !important;
+  }
+  .print\:p-0 {
+    padding: 0 !important;
+  }
+}

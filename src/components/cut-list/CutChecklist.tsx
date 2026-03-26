@@ -1,0 +1,91 @@
+'use client';
+
+import { Solution, StockSheet } from '@/lib/optimizer/types';
+import { formatDimension } from '@/lib/fractions';
+
+interface CutChecklistProps {
+  solution: Solution;
+  stockSheets: StockSheet[];
+}
+
+export function CutChecklist({ solution, stockSheets }: CutChecklistProps) {
+  return (
+    <div className="p-6 space-y-6 print:p-0">
+      <div className="flex items-center justify-between print:hidden">
+        <h3 className="text-lg font-semibold">Cut Checklist</h3>
+        <button
+          onClick={() => window.print()}
+          className="px-3 py-1.5 text-sm bg-foreground text-background rounded-md hover:opacity-90"
+        >
+          Print Checklist
+        </button>
+      </div>
+
+      {solution.sheets.map((sheet, si) => {
+        const stockSheet = stockSheets.find((s) => s.id === sheet.stockSheetId);
+        return (
+          <div key={`${sheet.stockSheetId}-${sheet.sheetIndex}`} className="space-y-2">
+            <h4 className="text-sm font-semibold border-b pb-1">
+              Sheet {si + 1}
+              {stockSheet?.label && ` — ${stockSheet.label}`}
+              <span className="text-muted-foreground font-normal ml-2">
+                ({formatDimension(stockSheet?.length || 0)} x{' '}
+                {formatDimension(stockSheet?.width || 0)})
+              </span>
+            </h4>
+
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-muted-foreground text-xs">
+                  <th className="w-8 pb-1"></th>
+                  <th className="pb-1">Panel</th>
+                  <th className="pb-1">Length</th>
+                  <th className="pb-1">Width</th>
+                  <th className="pb-1">Rotated</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sheet.placements.map((p, pi) => (
+                  <tr key={pi} className="border-b border-muted/50">
+                    <td className="py-1.5">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-gray-300"
+                      />
+                    </td>
+                    <td className="py-1.5 font-medium">{p.label}</td>
+                    <td className="py-1.5">
+                      {formatDimension(p.width)}&quot;
+                    </td>
+                    <td className="py-1.5">
+                      {formatDimension(p.height)}&quot;
+                    </td>
+                    <td className="py-1.5 text-muted-foreground">
+                      {p.rotated ? 'Yes' : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      })}
+
+      {solution.unplacedPanels.length > 0 && (
+        <div className="space-y-2">
+          <h4 className="text-sm font-semibold text-destructive border-b pb-1">
+            Unable to Fit
+          </h4>
+          <ul className="text-sm space-y-1">
+            {solution.unplacedPanels.map((p) => (
+              <li key={p.id} className="text-destructive">
+                {p.label} ({formatDimension(p.length)}&quot; x{' '}
+                {formatDimension(p.width)}&quot;) x{p.quantity}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
