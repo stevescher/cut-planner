@@ -5,6 +5,7 @@ import { useAutoSave } from '@/hooks/useAutoSave';
 import { StockSheetForm } from '@/components/forms/StockSheetForm';
 import { PanelForm } from '@/components/forms/PanelForm';
 import { KerfSetting } from '@/components/forms/KerfSetting';
+import { UnitToggle } from '@/components/forms/UnitToggle';
 import { ProjectMenu } from '@/components/project/ProjectMenu';
 import { LayoutViewer } from '@/components/layout-viewer/LayoutViewer';
 import { LayoutControls } from '@/components/layout-viewer/LayoutControls';
@@ -92,6 +93,12 @@ export default function Home() {
 
           <ScrollArea className="flex-1">
             <div className="p-4 space-y-5">
+
+              {/* Unit system — must be set before entering any measurements */}
+              <UnitToggle />
+
+              {/* Divider */}
+              <div className="border-t border-slate-200/70" />
 
               {/* Stock Sheets */}
               <section>
