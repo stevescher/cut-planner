@@ -70,6 +70,81 @@ function deduplicatePositions(positions: number[], epsilon: number): number[] {
   return result;
 }
 
+/**
+ * Subtract a list of blocked intervals from [lo, hi].
+ * Returns the remaining free sub-intervals (each at least minLen wide).
+ */
+function subtractRanges(
+  lo: number,
+  hi: number,
+  blocked: Array<[number, number]>,
+  minLen = 0.05,
+): Array<[number, number]> {
+  const sorted = [...blocked].sort((a, b) => a[0] - b[0]);
+  let remaining: Array<[number, number]> = [[lo, hi]];
+  for (const [blo, bhi] of sorted) {
+    const next: Array<[number, number]> = [];
+    for (const [rlo, rhi] of remaining) {
+      if (bhi <= rlo || blo >= rhi) { next.push([rlo, rhi]); continue; }
+      if (rlo < blo - minLen) next.push([rlo, blo]);
+      if (bhi < rhi - minLen) next.push([bhi, rhi]);
+    }
+    remaining = next;
+  }
+  return remaining.filter(([a, b]) => b - a > minLen);
+}
+
+/**
+ * Compute the line segments for a cut, clipped around any pieces that
+ * straddle the cut line (a piece whose body the blade would pass through).
+ */
+function clippedSegments(
+  orientation: 'horizontal' | 'vertical',
+  position: number,
+  sheetW: number,
+  sheetH: number,
+  placements: Placement[],
+  eps = 0.05,
+): Array<{ x1: number; y1: number; x2: number; y2: number }> {
+  if (orientation === 'horizontal') {
+    // Pieces whose body straddles y=position (not just touching at edges)
+    const blocking = placements.filter(
+      (p) => p.y < position - eps && p.y + p.height > position + eps,
+    );
+    const blockedX = blocking.map((p): [number, number] => [p.x, p.x + p.width]);
+    return subtractRanges(0, sheetW, blockedX).map(([lo, hi]) => ({
+      x1: lo, y1: position, x2: hi, y2: position,
+    }));
+  } else {
+    const blocking = placements.filter(
+      (p) => p.x < position - eps && p.x + p.width > position + eps,
+    );
+    const blockedY = blocking.map((p): [number, number] => [p.y, p.y + p.height]);
+    return subtractRanges(0, sheetH, blockedY).map(([lo, hi]) => ({
+      x1: position, y1: lo, x2: position, y2: hi,
+    }));
+  }
+}
+
+/** Return the midpoint of the longest segment (for badge placement). */
+function badgeAnchor(
+  segs: Array<{ x1: number; y1: number; x2: number; y2: number }>,
+  fallback: { x1: number; y1: number; x2: number; y2: number },
+) {
+  if (segs.length === 0) return fallback;
+  const longest = segs.reduce((best, s) => {
+    const len = Math.abs(s.x2 - s.x1) + Math.abs(s.y2 - s.y1);
+    const blen = Math.abs(best.x2 - best.x1) + Math.abs(best.y2 - best.y1);
+    return len > blen ? s : best;
+  }, segs[0]);
+  return {
+    x1: (longest.x1 + longest.x2) / 2,
+    y1: (longest.y1 + longest.y2) / 2,
+    x2: (longest.x1 + longest.x2) / 2,
+    y2: (longest.y1 + longest.y2) / 2,
+  };
+}
+
 export function deriveCutSequenceFromPlacements(
   placements: Placement[],
   sheetW: number,
@@ -86,9 +161,7 @@ export function deriveCutSequenceFromPlacements(
   for (const p of placements) {
     const right = p.x + p.width;
     const bottom = p.y + p.height;
-    // Interior right edge → vertical cut
     if (right < sheetW - edgeEpsilon) rawXCuts.push(right);
-    // Interior bottom edge → horizontal cut
     if (bottom < sheetH - edgeEpsilon) rawYCuts.push(bottom);
   }
 
@@ -98,13 +171,29 @@ export function deriveCutSequenceFromPlacements(
   const steps: CutStep[] = [];
   let n = 1;
 
-  // Horizontal cuts first (full-width rip cuts)
+  // Horizontal cuts first (rip cuts)
   for (const y of sortedY) {
-    steps.push({ stepNumber: n++, orientation: 'horizontal', x1: 0, y1: y, x2: sheetW, y2: y });
+    const segs = clippedSegments('horizontal', y, sheetW, sheetH, placements);
+    if (segs.length === 0) continue;
+    const anchor = badgeAnchor(segs, { x1: 0, y1: y, x2: sheetW, y2: y });
+    steps.push({
+      stepNumber: n++,
+      orientation: 'horizontal',
+      x1: anchor.x1, y1: anchor.y1, x2: anchor.x2, y2: anchor.y2,
+      segments: segs,
+    });
   }
   // Then vertical cuts
   for (const x of sortedX) {
-    steps.push({ stepNumber: n++, orientation: 'vertical', x1: x, y1: 0, x2: x, y2: sheetH });
+    const segs = clippedSegments('vertical', x, sheetW, sheetH, placements);
+    if (segs.length === 0) continue;
+    const anchor = badgeAnchor(segs, { x1: x, y1: 0, x2: x, y2: sheetH });
+    steps.push({
+      stepNumber: n++,
+      orientation: 'vertical',
+      x1: anchor.x1, y1: anchor.y1, x2: anchor.x2, y2: anchor.y2,
+      segments: segs,
+    });
   }
 
   return steps;

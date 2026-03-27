@@ -71,16 +71,16 @@ export default function Home() {
           </div>
           <div className="w-px h-4 bg-slate-200" />
           <ProjectMenu />
-        </div>
-
-        <div className="flex items-center gap-2">
           {solutions.length > 0 && (
             <>
-              <LayoutControls />
-              <div className="w-px h-5 bg-slate-200" />
+              <div className="w-px h-4 bg-slate-200" />
               <ExportMenu />
             </>
           )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          {solutions.length > 0 && <LayoutControls />}
         </div>
       </header>
 

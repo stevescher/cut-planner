@@ -10,17 +10,21 @@ import { getColor } from '@/lib/colors';
 import { formatDisplay, unitSuffix } from '@/lib/fractions';
 import { useProjectStore } from '@/store/useProjectStore';
 import { deriveCutSequenceFromPlacements } from '@/lib/optimizer/reoptimize';
+import { Maximize2 } from 'lucide-react';
 
 interface SheetCanvasProps {
   sheetLayout: SheetLayout;
   stockSheet: StockSheet;
   sheetNumber: number;
+  maxWidth?: number;     // override default 800 (used by lightbox)
+  onExpand?: () => void; // when set, shows the expand button
 }
 
 const PADDING = 40;
-const MAX_WIDTH = 800;
+const DEFAULT_MAX_WIDTH = 800;
 
-export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber }: SheetCanvasProps) {
+export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, onExpand }: SheetCanvasProps) {
+  const MAX_WIDTH = maxWidth ?? DEFAULT_MAX_WIDTH;
   const { showLabels, viewMode, showCutSequence, showEdgeDims, zoom } = useViewStore();
   const { units } = useProjectStore();
   const fmt = (v: number) => formatDisplay(v, units);
@@ -243,9 +247,21 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber }: SheetCanva
             ({fmt(sheetW)}{sfx} &times; {fmt(sheetH)}{sfx})
           </span>
         </h4>
-        <span className="text-xs text-slate-400">
-          Waste: {sheetLayout.wastePercent.toFixed(1)}%
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-slate-400">
+            Waste: {sheetLayout.wastePercent.toFixed(1)}%
+          </span>
+          {onExpand && (
+            <button
+              onClick={onExpand}
+              title="Expand to full view"
+              className="h-6 w-6 rounded-md flex items-center justify-center text-slate-400
+                         hover:text-slate-600 hover:bg-slate-100 transition-colors"
+            >
+              <Maximize2 className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
       </div>
 
       <svg
@@ -453,29 +469,36 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber }: SheetCanva
         })}
 
         {/* ── Cut sequence overlay ──────────────────────────────────────── */}
-        {showCutSequence && sheetLayout.cutSequence.map((cut) => (
-          <g key={`cut-${cut.stepNumber}`}>
-            <line
-              x1={PADDING + cut.x1 * scale} y1={PADDING + cut.y1 * scale}
-              x2={PADDING + cut.x2 * scale} y2={PADDING + cut.y2 * scale}
-              stroke="#ef4444" strokeWidth={1.5} strokeDasharray="4 2"
-            />
-            <circle
-              cx={PADDING + ((cut.x1 + cut.x2) / 2) * scale}
-              cy={PADDING + ((cut.y1 + cut.y2) / 2) * scale}
-              r={8} fill="#ef4444"
-            />
-            <text
-              x={PADDING + ((cut.x1 + cut.x2) / 2) * scale}
-              y={PADDING + ((cut.y1 + cut.y2) / 2) * scale}
-              textAnchor="middle" dominantBaseline="central"
-              fill="white" fontSize={9} fontWeight="bold"
-              style={{ pointerEvents: 'none' }}
-            >
-              {cut.stepNumber}
-            </text>
-          </g>
-        ))}
+        {showCutSequence && sheetLayout.cutSequence.map((cut) => {
+          // Use clipped segments when available (new data); fall back to full span
+          const segs = cut.segments?.length
+            ? cut.segments
+            : [{ x1: cut.x1, y1: cut.y1, x2: cut.x2, y2: cut.y2 }];
+          // Badge goes at the stored anchor midpoint
+          const bx = PADDING + ((cut.x1 + cut.x2) / 2) * scale;
+          const by = PADDING + ((cut.y1 + cut.y2) / 2) * scale;
+          return (
+            <g key={`cut-${cut.stepNumber}`}>
+              {segs.map((seg, si) => (
+                <line
+                  key={si}
+                  x1={PADDING + seg.x1 * scale} y1={PADDING + seg.y1 * scale}
+                  x2={PADDING + seg.x2 * scale} y2={PADDING + seg.y2 * scale}
+                  stroke="#ef4444" strokeWidth={1.5} strokeDasharray="4 2"
+                />
+              ))}
+              <circle cx={bx} cy={by} r={8} fill="#ef4444" />
+              <text
+                x={bx} y={by}
+                textAnchor="middle" dominantBaseline="central"
+                fill="white" fontSize={9} fontWeight="bold"
+                style={{ pointerEvents: 'none' }}
+              >
+                {cut.stepNumber}
+              </text>
+            </g>
+          );
+        })}
 
         {/* Sheet dimension labels */}
         <text x={PADDING + (sheetW * scale) / 2} y={PADDING - 10}

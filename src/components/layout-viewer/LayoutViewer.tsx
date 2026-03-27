@@ -10,7 +10,7 @@ import { useHistoryStore } from '@/store/useHistoryStore';
 import { reOptimizeAroundPinned } from '@/lib/optimizer/reoptimize';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
-import { LayoutGrid, ClipboardList, Anchor, RefreshCw, ZoomIn, ZoomOut, AlertTriangle, PlusCircle, Shuffle } from 'lucide-react';
+import { LayoutGrid, ClipboardList, Anchor, RefreshCw, ZoomIn, ZoomOut, AlertTriangle, PlusCircle, Shuffle, X } from 'lucide-react';
 import { useViewStore, ZOOM_MIN, ZOOM_MAX, ZOOM_STEP } from '@/store/useViewStore';
 import { useOptimizer } from '@/hooks/useOptimizer';
 import { Panel, StockSheet, Solution } from '@/lib/optimizer/types';
@@ -93,6 +93,7 @@ export function LayoutViewer() {
   const [view, setView] = useState<'diagram' | 'checklist'>('diagram');
   const [reOptimizing, setReOptimizing] = useState(false);
   const [fixing, setFixing] = useState(false);
+  const [expandedSheetKey, setExpandedSheetKey] = useState<string | null>(null);
 
   if (solutions.length === 0) {
     return (
@@ -374,12 +375,14 @@ export function LayoutViewer() {
                   const stockSheet = stockSheets.find(
                     (s) => s.id === sheetLayout.stockSheetId
                   );
+                  const sheetKey = `${sheetLayout.stockSheetId}-${sheetLayout.sheetIndex}`;
                   return (
                     <SheetCanvas
-                      key={`${sheetLayout.stockSheetId}-${sheetLayout.sheetIndex}`}
+                      key={sheetKey}
                       sheetLayout={sheetLayout}
                       stockSheet={stockSheet!}
                       sheetNumber={i + 1}
+                      onExpand={() => setExpandedSheetKey(sheetKey)}
                     />
                   );
                 })}
@@ -388,6 +391,45 @@ export function LayoutViewer() {
           </div>
         )}
       </ScrollArea>
+
+      {/* ── Lightbox modal ───────────────────────────────────────────── */}
+      {expandedSheetKey && activeSolution && (() => {
+        const idx = activeSolution.sheets.findIndex(
+          (sl) => `${sl.stockSheetId}-${sl.sheetIndex}` === expandedSheetKey
+        );
+        if (idx === -1) return null;
+        const sheetLayout = activeSolution.sheets[idx];
+        const stockSheet = stockSheets.find((s) => s.id === sheetLayout.stockSheetId);
+        if (!stockSheet) return null;
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-6"
+            style={{ background: 'rgba(15,23,42,0.75)', backdropFilter: 'blur(4px)' }}
+            onClick={() => setExpandedSheetKey(null)}
+          >
+            <div
+              className="relative bg-white rounded-2xl shadow-2xl overflow-auto max-w-[95vw] max-h-[92vh] p-6"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Close button */}
+              <button
+                onClick={() => setExpandedSheetKey(null)}
+                className="absolute top-4 right-4 z-10 h-8 w-8 rounded-full bg-slate-100
+                           hover:bg-slate-200 flex items-center justify-center transition-colors"
+                title="Close"
+              >
+                <X className="h-4 w-4 text-slate-600" />
+              </button>
+              <SheetCanvas
+                sheetLayout={sheetLayout}
+                stockSheet={stockSheet}
+                sheetNumber={idx + 1}
+                maxWidth={Math.min(window.innerWidth * 0.88, 1400)}
+              />
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

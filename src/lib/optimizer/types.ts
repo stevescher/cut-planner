@@ -38,11 +38,18 @@ export interface Placement {
 export interface CutStep {
   stepNumber: number;
   orientation: 'horizontal' | 'vertical';
-  /** Position along the cut axis (absolute coordinate on the sheet) */
+  /** Badge anchor — midpoint of the longest segment */
   x1: number;
   y1: number;
   x2: number;
   y2: number;
+  /**
+   * One or more line segments that make up this cut.
+   * Segments are clipped to not pass through any placed piece —
+   * a cut at y=16 only appears where no panel straddles that line.
+   * Falls back to the x1/y1→x2/y2 span when not present (legacy data).
+   */
+  segments: Array<{ x1: number; y1: number; x2: number; y2: number }>;
 }
 
 /** One stock sheet with its assigned placements */
