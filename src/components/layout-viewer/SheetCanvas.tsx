@@ -247,23 +247,13 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
             ({fmt(sheetW)}{sfx} &times; {fmt(sheetH)}{sfx})
           </span>
         </h4>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-400">
-            Waste: {sheetLayout.wastePercent.toFixed(1)}%
-          </span>
-          {onExpand && (
-            <button
-              onClick={onExpand}
-              title="Expand to full view"
-              className="h-6 w-6 rounded-md flex items-center justify-center text-slate-400
-                         hover:text-slate-600 hover:bg-slate-100 transition-colors"
-            >
-              <Maximize2 className="h-3.5 w-3.5" />
-            </button>
-          )}
-        </div>
+        <span className="text-xs text-slate-400">
+          Waste: {sheetLayout.wastePercent.toFixed(1)}%
+        </span>
       </div>
 
+      {/* SVG wrapper — expand button sits on the top-right corner of the sheet border */}
+      <div className="relative inline-block">
       <svg
         ref={svgRef}
         width={svgW}
@@ -514,6 +504,21 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
           {fmt(sheetH)}{sfx}
         </text>
       </svg>
+
+        {/* Expand button — top-right corner of sheet border */}
+        {onExpand && (
+          <button
+            onClick={onExpand}
+            title="Expand to full view"
+            className="absolute flex items-center justify-center rounded-md
+                       bg-white/80 hover:bg-white text-slate-400 hover:text-slate-700
+                       shadow-sm border border-slate-200 transition-all"
+            style={{ top: PADDING - 11, right: PADDING - 11, width: 22, height: 22 }}
+          >
+            <Maximize2 style={{ width: 12, height: 12 }} />
+          </button>
+        )}
+      </div>{/* end relative wrapper */}
 
       {/* ── Piece legend (deduplicated) ──────────────────────────────────── */}
       {(() => {

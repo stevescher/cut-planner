@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useLayoutStore } from '@/store/useLayoutStore';
 import { useDragStore } from '@/store/useDragStore';
 import { SheetCanvas } from './SheetCanvas';
@@ -10,7 +10,7 @@ import { useHistoryStore } from '@/store/useHistoryStore';
 import { reOptimizeAroundPinned } from '@/lib/optimizer/reoptimize';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
-import { LayoutGrid, ClipboardList, Anchor, RefreshCw, ZoomIn, ZoomOut, AlertTriangle, PlusCircle, Shuffle, X } from 'lucide-react';
+import { LayoutGrid, ClipboardList, Anchor, RefreshCw, ZoomIn, ZoomOut, AlertTriangle, PlusCircle, Shuffle, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useViewStore, ZOOM_MIN, ZOOM_MAX, ZOOM_STEP } from '@/store/useViewStore';
 import { useOptimizer } from '@/hooks/useOptimizer';
 import { Panel, StockSheet, Solution } from '@/lib/optimizer/types';
@@ -93,7 +93,23 @@ export function LayoutViewer() {
   const [view, setView] = useState<'diagram' | 'checklist'>('diagram');
   const [reOptimizing, setReOptimizing] = useState(false);
   const [fixing, setFixing] = useState(false);
-  const [expandedSheetKey, setExpandedSheetKey] = useState<string | null>(null);
+  const [expandedSheetIdx, setExpandedSheetIdx] = useState<number | null>(null);
+
+  // Lock background scroll + keyboard nav while lightbox is open
+  useEffect(() => {
+    if (expandedSheetIdx === null) { document.body.style.overflow = ''; return; }
+    document.body.style.overflow = 'hidden';
+    const total = solutions[activeSolutionIndex]?.sheets.length ?? 0;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setExpandedSheetIdx(null);
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown')
+        setExpandedSheetIdx((i) => (i !== null && i < total - 1 ? i + 1 : i));
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp')
+        setExpandedSheetIdx((i) => (i !== null && i > 0 ? i - 1 : i));
+    };
+    window.addEventListener('keydown', onKey);
+    return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = ''; };
+  }, [expandedSheetIdx, solutions, activeSolutionIndex]);
 
   if (solutions.length === 0) {
     return (
@@ -375,14 +391,13 @@ export function LayoutViewer() {
                   const stockSheet = stockSheets.find(
                     (s) => s.id === sheetLayout.stockSheetId
                   );
-                  const sheetKey = `${sheetLayout.stockSheetId}-${sheetLayout.sheetIndex}`;
                   return (
                     <SheetCanvas
-                      key={sheetKey}
+                      key={`${sheetLayout.stockSheetId}-${sheetLayout.sheetIndex}`}
                       sheetLayout={sheetLayout}
                       stockSheet={stockSheet!}
                       sheetNumber={i + 1}
-                      onExpand={() => setExpandedSheetKey(sheetKey)}
+                      onExpand={() => setExpandedSheetIdx(i)}
                     />
                   );
                 })}
@@ -393,38 +408,72 @@ export function LayoutViewer() {
       </ScrollArea>
 
       {/* ── Lightbox modal ───────────────────────────────────────────── */}
-      {expandedSheetKey && activeSolution && (() => {
-        const idx = activeSolution.sheets.findIndex(
-          (sl) => `${sl.stockSheetId}-${sl.sheetIndex}` === expandedSheetKey
-        );
-        if (idx === -1) return null;
+      {expandedSheetIdx !== null && activeSolution && (() => {
+        const totalSheets = activeSolution.sheets.length;
+        const idx = Math.max(0, Math.min(expandedSheetIdx, totalSheets - 1));
         const sheetLayout = activeSolution.sheets[idx];
         const stockSheet = stockSheets.find((s) => s.id === sheetLayout.stockSheetId);
         if (!stockSheet) return null;
+        const hasPrev = idx > 0;
+        const hasNext = idx < totalSheets - 1;
         return (
           <div
-            className="fixed inset-0 z-50 flex items-center justify-center p-6"
-            style={{ background: 'rgba(15,23,42,0.75)', backdropFilter: 'blur(4px)' }}
-            onClick={() => setExpandedSheetKey(null)}
+            className="fixed inset-0 z-50 flex items-center justify-center p-3"
+            style={{ background: 'rgba(15,23,42,0.8)', backdropFilter: 'blur(6px)' }}
+            onClick={() => setExpandedSheetIdx(null)}
           >
+            {/* Prev arrow */}
+            {hasPrev && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setExpandedSheetIdx(idx - 1); }}
+                className="absolute left-4 top-1/2 -translate-y-1/2 z-20 h-10 w-10 rounded-full
+                           bg-white/90 hover:bg-white shadow-lg flex items-center justify-center
+                           text-slate-700 transition-all"
+                title="Previous sheet"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+            )}
+
+            {/* Next arrow */}
+            {hasNext && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setExpandedSheetIdx(idx + 1); }}
+                className="absolute right-4 top-1/2 -translate-y-1/2 z-20 h-10 w-10 rounded-full
+                           bg-white/90 hover:bg-white shadow-lg flex items-center justify-center
+                           text-slate-700 transition-all"
+                title="Next sheet"
+              >
+                <ChevronRight className="h-5 w-5" />
+              </button>
+            )}
+
+            {/* Card */}
             <div
-              className="relative bg-white rounded-2xl shadow-2xl overflow-auto max-w-[95vw] max-h-[92vh] p-6"
+              className="relative bg-white rounded-2xl shadow-2xl overflow-auto p-5
+                         w-[97vw] max-h-[97vh]"
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Close button */}
-              <button
-                onClick={() => setExpandedSheetKey(null)}
-                className="absolute top-4 right-4 z-10 h-8 w-8 rounded-full bg-slate-100
-                           hover:bg-slate-200 flex items-center justify-center transition-colors"
-                title="Close"
-              >
-                <X className="h-4 w-4 text-slate-600" />
-              </button>
+              {/* Header row: sheet counter + close */}
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-sm font-semibold text-slate-500">
+                  Sheet {idx + 1}{totalSheets > 1 ? ` of ${totalSheets}` : ''}
+                  {stockSheet.label && ` — ${stockSheet.label}`}
+                </span>
+                <button
+                  onClick={() => setExpandedSheetIdx(null)}
+                  className="h-8 w-8 rounded-full bg-slate-100 hover:bg-slate-200
+                             flex items-center justify-center transition-colors"
+                  title="Close (Esc)"
+                >
+                  <X className="h-4 w-4 text-slate-600" />
+                </button>
+              </div>
               <SheetCanvas
                 sheetLayout={sheetLayout}
                 stockSheet={stockSheet}
                 sheetNumber={idx + 1}
-                maxWidth={Math.min(window.innerWidth * 0.88, 1400)}
+                maxWidth={Math.round(window.innerWidth * 0.94)}
               />
             </div>
           </div>
