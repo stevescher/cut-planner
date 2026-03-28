@@ -32,7 +32,7 @@ A web-based plywood and sheet goods cutlist optimizer. Enter your stock sheet di
 | Feature | Details |
 |---|---|
 | **Unit system** | Imperial (fractional inches) or Metric (mm) — set once at the top of the sidebar before entering measurements |
-| **Stock sheet entry** | Preset sizes (4×8, 5×5, 2×4, etc. / metric equivalents) or custom dimensions. Per-sheet label, material tag, quantity, and optional edge trim (top/right/bottom/left) |
+| **Stock sheet entry** | Preset sizes (4×8, 5×5, 2×4, etc. / metric equivalents) or custom dimensions. Per-sheet label, quantity, and optional edge trim (top/right/bottom/left) |
 | **Panel entry** | Label, length, width, quantity. Color-coded dots match layout colors |
 | **Kerf setting** | Blade kerf in inches or mm — deducted from every cut edge automatically |
 | **Plan Cuts** | Runs 15 packing strategies simultaneously, returns top results sorted by waste |
@@ -41,7 +41,7 @@ A web-based plywood and sheet goods cutlist optimizer. Enter your stock sheet di
 | **Color / Mono / Outline** | Three view modes: color-coded pieces, grayscale, or black outlines only |
 | **Labels toggle** | Show/hide piece name and dimensions centered on each piece |
 | **Dimensions toggle** | Show/hide width and height labels along each piece's top and left edges — off by default |
-| **Cut sequence** | Numbered cut lines showing the practical order of saw cuts (horizontal rip cuts first, then vertical cross-cuts) |
+| **Cut sequence** | Numbered cut lines showing a practical guillotine cut order — waste isolation cuts first, then piece-separating cuts, recursively within each sub-region |
 | **Drag & drop** | Drag any piece to a new position; snaps to piece edges and sheet boundaries |
 | **Rotate** | ↺ button on every piece; floats above the piece when the piece is too small to contain it |
 | **Unplaced panel fix** | When panels can't fit, a banner explains what's missing and offers "Add N sheet(s) & Re-Plan" — one click adds the estimated extra stock and re-runs the optimizer |
@@ -217,7 +217,6 @@ All dimension values are stored internally in **inches** regardless of the displ
 StockSheet {
   id: string           // nanoid
   label: string        // e.g. "Sheet A" — shown in diagrams and PDF
-  material: string     // e.g. "Birch Ply" — informational only
   length: number       // inches (long dimension)
   width: number        // inches (short dimension)
   quantity: number     // how many identical sheets are available
@@ -330,14 +329,22 @@ When the user clicks **Re-Plan Cuts** in the anchor banner:
 
 `reoptimize.ts` — `deriveCutSequenceFromPlacements()`
 
-Cut sequence is derived from placement geometry rather than the guillotine tree. The tree-based approach (in the legacy `cut-sequence.ts`) generated one cut per tree node — multiple nodes at the same physical y-level stacked redundant cut lines on the diagram.
+Cut sequence is derived from placement geometry using a **recursive guillotine approach** that models how a woodworker actually sequences cuts — isolating waste first, then separating pieces within each sub-region.
 
 ### Algorithm
-1. For each placement, record the interior right edge as a candidate **vertical** cut, and the interior bottom edge as a candidate **horizontal** cut. "Interior" = more than 0.05" from the sheet edge.
-2. Sort candidates and merge any within **0.25"** of each other (collapses kerf-offset near-duplicates) using `deduplicatePositions()`.
-3. Number horizontal cuts first (full-width rip cuts — woodworking best practice: cut strips before cross-cutting), then vertical cuts.
 
-This runs on every Optimize, drag-drop, and rotate. The result renders as red dashed lines with numbered badges when **Cuts** is on in the toolbar.
+At each region, the algorithm:
+
+1. Collects all four edges of every piece as candidate cut positions (top, bottom, left, right)
+2. Filters out any position where a piece would be split (straddle check with 0.05" tolerance)
+3. Scores each valid cut:
+   - **Waste-isolation cut** (one side has no pieces): `0.8 + wasteRatio × 0.2` (scores 0.8–1.0)
+   - **Piece-separating cut**: `alignmentFrac × 0.5 + balance × 0.3 + 0.2` (scores 0.2–1.0)
+   - `alignmentFrac` = fraction of pieces with an edge at this cut position (±0.25")
+   - `balance` = `min(n1, n2) / max(n1, n2)` — how evenly the cut splits the group
+4. Emits the highest-scoring cut, then **recurses independently** into each sub-region
+
+This means: when a large unused zone exists (e.g., pieces clustered in the left 30% of a sheet), the algorithm cuts off the waste strip first, then works within the piece zone — matching natural woodworking practice. It runs on every Optimize, drag-drop, and rotate. The result renders as red dashed lines with numbered badges when **Cuts** is on in the toolbar.
 
 ---
 
@@ -424,6 +431,20 @@ npm install
 npm run dev       # http://localhost:3000
 ```
 
+### Sample projects
+
+`samples/` contains five ready-made `.json` files for testing different packing and cut scenarios:
+
+| File | Description |
+|---|---|
+| `sample-a.json` | 4 same-height parts clustered in the left of a 4×8 sheet |
+| `sample-b.json` | Mixed-height narrow parts |
+| `sample-c.json` | Parts filling roughly half the sheet |
+| `sample-d.json` | Parts spanning nearly the full width |
+| `sample-e.json` | Many small parts of multiple sizes |
+
+Load any of them via **Project → Load from file**.
+
 ### Production build
 ```bash
 npm run build     # next build --webpack
@@ -483,7 +504,7 @@ Vercel reads the `build` script from `package.json`:
 | Feature | Notes |
 |---|---|
 | **Web Worker** | Move `solveAll()` off-thread via `comlink` (already installed) |
-| **Material pricing** | Cost per sheet type → total material estimate. `material` field already exists on `StockSheet` |
+| **Material pricing** | Cost per sheet type → total material estimate |
 | **User accounts + cloud save** | Projects saved server-side; `localStorage` as fallback |
 | **Remnant tracking** | Mark offcuts as new stock sheets for future projects |
 | **CSV/Excel import** | Bulk panel entry from a spreadsheet |

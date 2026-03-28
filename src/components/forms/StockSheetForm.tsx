@@ -42,7 +42,7 @@ export function StockSheetForm() {
           </div>
 
           {/* Row 2: dimensions */}
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             <div>
               <label className="field-label">Length</label>
               <NumberInput
@@ -68,15 +68,6 @@ export function StockSheetForm() {
                 onChange={(v) => updateStockSheet(sheet.id, { quantity: Math.max(1, Math.round(v)) })}
                 placeholder="1"
                 min={1}
-              />
-            </div>
-            <div>
-              <label className="field-label">Material</label>
-              <Input
-                value={sheet.material}
-                onChange={(e) => updateStockSheet(sheet.id, { material: e.target.value })}
-                placeholder="Plywood"
-                className="h-9 text-sm"
               />
             </div>
           </div>

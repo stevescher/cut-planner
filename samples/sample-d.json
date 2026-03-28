@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "name": "Sample D — pieces span nearly full width",
+  "kerf": 0.125,
+  "savedAt": "2026-03-27T00:00:00.000Z",
+  "stockSheets": [
+    {
+      "id": "sheet-d1",
+      "label": "",
+      "length": 96,
+      "width": 48,
+      "quantity": 1,
+      "trimTop": 0,
+      "trimRight": 0,
+      "trimBottom": 0,
+      "trimLeft": 0
+    }
+  ],
+  "panels": [
+    { "id": "p1", "label": "Part 1", "length": 80, "width": 18, "quantity": 1 },
+    { "id": "p2", "label": "Part 2", "length": 80, "width": 12, "quantity": 1 },
+    { "id": "p3", "label": "Part 3", "length": 40, "width": 10, "quantity": 1 }
+  ]
+}

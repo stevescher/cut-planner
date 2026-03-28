@@ -31,7 +31,6 @@ function createDefaultStockSheet(overrides?: Partial<StockSheet>): StockSheet {
   return {
     id: nanoid(),
     label: '',
-    material: '',
     length: 96,
     width: 48,
     quantity: 1,

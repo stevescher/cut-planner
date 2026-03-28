@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "name": "Sample A — similar height, clustered left",
+  "kerf": 0.125,
+  "savedAt": "2026-03-27T00:00:00.000Z",
+  "stockSheets": [
+    {
+      "id": "sheet-a1",
+      "label": "",
+      "length": 96,
+      "width": 48,
+      "quantity": 1,
+      "trimTop": 0,
+      "trimRight": 0,
+      "trimBottom": 0,
+      "trimLeft": 0
+    }
+  ],
+  "panels": [
+    { "id": "p1", "label": "Part 1", "length": 30, "width": 20, "quantity": 1 },
+    { "id": "p2", "label": "Part 2", "length": 18, "width": 20, "quantity": 1 },
+    { "id": "p3", "label": "Part 3", "length": 10, "width": 20, "quantity": 1 },
+    { "id": "p4", "label": "Part 4", "length": 10, "width": 20, "quantity": 1 }
+  ]
+}

@@ -2,7 +2,6 @@
 export interface StockSheet {
   id: string;
   label: string;
-  material: string;
   length: number; // inches
   width: number; // inches
   quantity: number;

@@ -51,26 +51,6 @@ function dist2(ax: number, ay: number, bx: number, by: number): number {
 // ─── Cut-sequence from placements ─────────────────────────────────────────────
 
 /**
- * Derive a practical cut sequence from placed pieces.
- * Generates horizontal "rip cuts" first, then vertical cross-cuts,
- * ordered from one side to the other (typical woodworking sequence).
- */
-/**
- * Merge a sorted list of positions, collapsing any within `epsilon` of the
- * previous kept value into one (keeps the first in each cluster).
- */
-function deduplicatePositions(positions: number[], epsilon: number): number[] {
-  const sorted = [...positions].sort((a, b) => a - b);
-  const result: number[] = [];
-  for (const pos of sorted) {
-    if (result.length === 0 || pos - result[result.length - 1] > epsilon) {
-      result.push(pos);
-    }
-  }
-  return result;
-}
-
-/**
  * Subtract a list of blocked intervals from [lo, hi].
  * Returns the remaining free sub-intervals (each at least minLen wide).
  */
@@ -94,38 +74,6 @@ function subtractRanges(
   return remaining.filter(([a, b]) => b - a > minLen);
 }
 
-/**
- * Compute the line segments for a cut, clipped around any pieces that
- * straddle the cut line (a piece whose body the blade would pass through).
- */
-function clippedSegments(
-  orientation: 'horizontal' | 'vertical',
-  position: number,
-  sheetW: number,
-  sheetH: number,
-  placements: Placement[],
-  eps = 0.05,
-): Array<{ x1: number; y1: number; x2: number; y2: number }> {
-  if (orientation === 'horizontal') {
-    // Pieces whose body straddles y=position (not just touching at edges)
-    const blocking = placements.filter(
-      (p) => p.y < position - eps && p.y + p.height > position + eps,
-    );
-    const blockedX = blocking.map((p): [number, number] => [p.x, p.x + p.width]);
-    return subtractRanges(0, sheetW, blockedX).map(([lo, hi]) => ({
-      x1: lo, y1: position, x2: hi, y2: position,
-    }));
-  } else {
-    const blocking = placements.filter(
-      (p) => p.x < position - eps && p.x + p.width > position + eps,
-    );
-    const blockedY = blocking.map((p): [number, number] => [p.y, p.y + p.height]);
-    return subtractRanges(0, sheetH, blockedY).map(([lo, hi]) => ({
-      x1: position, y1: lo, x2: position, y2: hi,
-    }));
-  }
-}
-
 /** Return the midpoint of the longest segment (for badge placement). */
 function badgeAnchor(
   segs: Array<{ x1: number; y1: number; x2: number; y2: number }>,
@@ -145,6 +93,14 @@ function badgeAnchor(
   };
 }
 
+/**
+ * Derive a practical cut sequence using a recursive guillotine approach.
+ *
+ * At each region, all valid straight cuts (where no piece is split) are
+ * scored and the best is chosen first. Waste-isolation cuts (freeing an
+ * empty strip) score higher than piece-separating cuts unless the
+ * separation is very well-aligned.
+ */
 export function deriveCutSequenceFromPlacements(
   placements: Placement[],
   sheetW: number,
@@ -152,50 +108,170 @@ export function deriveCutSequenceFromPlacements(
 ): CutStep[] {
   if (placements.length < 2) return [];
 
-  const epsilon = 0.25; // quarter-inch: merge nearly-identical cut lines
-  const edgeEpsilon = 0.05; // strip positions flush with the sheet edge
+  const POS_EPS = 0.05;   // straddle-check tolerance (≈ saw kerf)
+  const ALIGN_EPS = 0.25; // edge-alignment tolerance (~quarter inch)
 
-  const rawXCuts: number[] = [];
-  const rawYCuts: number[] = [];
+  interface Region { x0: number; y0: number; x1: number; y1: number; }
 
-  for (const p of placements) {
-    const right = p.x + p.width;
-    const bottom = p.y + p.height;
-    if (right < sheetW - edgeEpsilon) rawXCuts.push(right);
-    if (bottom < sheetH - edgeEpsilon) rawYCuts.push(bottom);
+  function straddlesH(p: Placement, y: number): boolean {
+    return p.y < y - POS_EPS && p.y + p.height > y + POS_EPS;
   }
 
-  const sortedY = deduplicatePositions(rawYCuts, epsilon);
-  const sortedX = deduplicatePositions(rawXCuts, epsilon);
+  function straddlesV(p: Placement, x: number): boolean {
+    return p.x < x - POS_EPS && p.x + p.width > x + POS_EPS;
+  }
+
+  /** Cut segments clipped to the current region (straddling pieces should be none for valid cuts). */
+  function segmentsForCut(
+    orientation: 'horizontal' | 'vertical',
+    position: number,
+    pieces: Placement[],
+    region: Region,
+  ): Array<{ x1: number; y1: number; x2: number; y2: number }> {
+    if (orientation === 'horizontal') {
+      const blockedX = pieces
+        .filter(p => straddlesH(p, position))
+        .map((p): [number, number] => [p.x, p.x + p.width]);
+      return subtractRanges(region.x0, region.x1, blockedX).map(([lo, hi]) => ({
+        x1: lo, y1: position, x2: hi, y2: position,
+      }));
+    } else {
+      const blockedY = pieces
+        .filter(p => straddlesV(p, position))
+        .map((p): [number, number] => [p.y, p.y + p.height]);
+      return subtractRanges(region.y0, region.y1, blockedY).map(([lo, hi]) => ({
+        x1: position, y1: lo, x2: position, y2: hi,
+      }));
+    }
+  }
+
+  /**
+   * Score a candidate cut.
+   * Waste-isolation (one side empty): 0.8 + wasteRatio * 0.2
+   * Piece-separating: alignmentFrac * 0.5 + balance * 0.3 + 0.2
+   */
+  function scoreCut(
+    orientation: 'horizontal' | 'vertical',
+    position: number,
+    pieces: Placement[],
+    region: Region,
+  ): number {
+    const g1: Placement[] = [];
+    const g2: Placement[] = [];
+    if (orientation === 'horizontal') {
+      for (const p of pieces) {
+        if (p.y + p.height <= position + POS_EPS) g1.push(p);
+        else g2.push(p);
+      }
+    } else {
+      for (const p of pieces) {
+        if (p.x + p.width <= position + POS_EPS) g1.push(p);
+        else g2.push(p);
+      }
+    }
+
+    if (g1.length === 0 || g2.length === 0) {
+      // Waste-isolation cut
+      const regionLen = orientation === 'horizontal'
+        ? region.y1 - region.y0
+        : region.x1 - region.x0;
+      const wasteLen = orientation === 'horizontal'
+        ? (g1.length === 0 ? position - region.y0 : region.y1 - position)
+        : (g1.length === 0 ? position - region.x0 : region.x1 - position);
+      const wasteRatio = regionLen > 0 ? wasteLen / regionLen : 0;
+      return 0.8 + wasteRatio * 0.2;
+    }
+
+    // Piece-separating cut: score by edge alignment and balance
+    let alignCount = 0;
+    if (orientation === 'horizontal') {
+      for (const p of pieces) {
+        if (Math.abs(p.y + p.height - position) < ALIGN_EPS ||
+            Math.abs(p.y - position) < ALIGN_EPS) alignCount++;
+      }
+    } else {
+      for (const p of pieces) {
+        if (Math.abs(p.x + p.width - position) < ALIGN_EPS ||
+            Math.abs(p.x - position) < ALIGN_EPS) alignCount++;
+      }
+    }
+    const alignmentFrac = pieces.length > 0 ? alignCount / pieces.length : 0;
+    const balance = Math.min(g1.length, g2.length) / Math.max(g1.length, g2.length);
+    return alignmentFrac * 0.5 + balance * 0.3 + 0.2;
+  }
 
   const steps: CutStep[] = [];
-  let n = 1;
+  let stepNum = 1;
 
-  // Horizontal cuts first (rip cuts)
-  for (const y of sortedY) {
-    const segs = clippedSegments('horizontal', y, sheetW, sheetH, placements);
-    if (segs.length === 0) continue;
-    const anchor = badgeAnchor(segs, { x1: 0, y1: y, x2: sheetW, y2: y });
-    steps.push({
-      stepNumber: n++,
-      orientation: 'horizontal',
-      x1: anchor.x1, y1: anchor.y1, x2: anchor.x2, y2: anchor.y2,
-      segments: segs,
-    });
-  }
-  // Then vertical cuts
-  for (const x of sortedX) {
-    const segs = clippedSegments('vertical', x, sheetW, sheetH, placements);
-    if (segs.length === 0) continue;
-    const anchor = badgeAnchor(segs, { x1: x, y1: 0, x2: x, y2: sheetH });
-    steps.push({
-      stepNumber: n++,
-      orientation: 'vertical',
-      x1: anchor.x1, y1: anchor.y1, x2: anchor.x2, y2: anchor.y2,
-      segments: segs,
-    });
+  function planRegion(pieces: Placement[], region: Region): void {
+    if (pieces.length <= 1) return;
+
+    type Candidate = { orientation: 'horizontal' | 'vertical'; position: number; score: number };
+    const candidates: Candidate[] = [];
+    const seen = new Set<string>();
+
+    for (const p of pieces) {
+      // Try all four edges of each piece as potential cut positions
+      const edges: Array<['horizontal' | 'vertical', number]> = [
+        ['horizontal', p.y + p.height],  // bottom edge
+        ['horizontal', p.y],             // top edge
+        ['vertical',   p.x + p.width],   // right edge
+        ['vertical',   p.x],             // left edge
+      ];
+
+      for (const [orientation, position] of edges) {
+        const [lo, hi] = orientation === 'horizontal'
+          ? [region.y0, region.y1]
+          : [region.x0, region.x1];
+
+        // Skip positions at or outside region boundaries
+        if (position <= lo + POS_EPS || position >= hi - POS_EPS) continue;
+
+        const key = `${orientation[0]}:${position.toFixed(4)}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+
+        // Valid only if no piece in this region straddles the cut
+        const straddles = orientation === 'horizontal'
+          ? pieces.some(q => straddlesH(q, position))
+          : pieces.some(q => straddlesV(q, position));
+        if (straddles) continue;
+
+        candidates.push({ orientation, position, score: scoreCut(orientation, position, pieces, region) });
+      }
+    }
+
+    if (candidates.length === 0) return;
+
+    // Pick the highest-scoring cut
+    candidates.sort((a, b) => b.score - a.score);
+    const best = candidates[0];
+
+    // Emit cut segments for this region
+    const segs = segmentsForCut(best.orientation, best.position, pieces, region);
+    if (segs.length > 0) {
+      const fallback = best.orientation === 'horizontal'
+        ? { x1: region.x0, y1: best.position, x2: region.x1, y2: best.position }
+        : { x1: best.position, y1: region.y0, x2: best.position, y2: region.y1 };
+      const anchor = badgeAnchor(segs, fallback);
+      steps.push({ stepNumber: stepNum++, orientation: best.orientation, ...anchor, segments: segs });
+    }
+
+    // Split pieces into sub-groups and recurse
+    if (best.orientation === 'horizontal') {
+      const g1 = pieces.filter(p => p.y + p.height <= best.position + POS_EPS);
+      const g2 = pieces.filter(p => p.y >= best.position - POS_EPS);
+      planRegion(g1, { ...region, y1: best.position });
+      planRegion(g2, { ...region, y0: best.position });
+    } else {
+      const g1 = pieces.filter(p => p.x + p.width <= best.position + POS_EPS);
+      const g2 = pieces.filter(p => p.x >= best.position - POS_EPS);
+      planRegion(g1, { ...region, x1: best.position });
+      planRegion(g2, { ...region, x0: best.position });
+    }
   }
 
+  planRegion(placements, { x0: 0, y0: 0, x1: sheetW, y1: sheetH });
   return steps;
 }
 
