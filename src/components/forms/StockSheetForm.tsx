@@ -86,18 +86,26 @@ export function StockSheetForm() {
           </button>
 
           {expandedTrim === sheet.id && (
-            <div className="grid grid-cols-4 gap-2 pt-1 border-t border-slate-100">
-              {(['trimTop', 'trimRight', 'trimBottom', 'trimLeft'] as const).map((side) => (
-                <div key={side}>
-                  <label className="field-label">{side.replace('trim', '')}</label>
-                  <NumberInput
-                    value={sheet[side]}
-                    onChange={(v) => updateStockSheet(sheet.id, { [side]: v })}
-                    placeholder="0"
-                    units={units}
-                  />
-                </div>
-              ))}
+            <div className="pt-1 border-t border-slate-100 space-y-2">
+              <div className="grid grid-cols-4 gap-2">
+                {(['trimTop', 'trimRight', 'trimBottom', 'trimLeft'] as const).map((side) => (
+                  <div key={side}>
+                    <label className="field-label">{side.replace('trim', '')}</label>
+                    <NumberInput
+                      value={sheet[side]}
+                      onChange={(v) => updateStockSheet(sheet.id, { [side]: v })}
+                      placeholder="0"
+                      units={units}
+                    />
+                  </div>
+                ))}
+              </div>
+              {(sheet.trimLeft + sheet.trimRight >= sheet.length ||
+                sheet.trimTop + sheet.trimBottom >= sheet.width) && (
+                <p className="text-xs text-red-600 font-medium">
+                  ⚠ Trim exceeds sheet dimensions — no usable area remains.
+                </p>
+              )}
             </div>
           )}
         </div>

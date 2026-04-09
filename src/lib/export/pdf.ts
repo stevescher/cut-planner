@@ -46,7 +46,7 @@ function drawSummaryPage(
     `${solution.totalSheets} sheet${solution.totalSheets !== 1 ? 's' : ''}`,
     `${solution.totalWaste.toFixed(1)}% waste`,
     ...(solution.unplacedPanels.length > 0
-      ? [`⚠ ${solution.unplacedPanels.length} unplaced`]
+      ? [`⚠ ${solution.unplacedPanels.reduce((s, p) => s + p.quantity, 0)} unplaced`]
       : []),
   ].join('   ·   ');
   pdf.text(stats, margin, margin + 0.75);

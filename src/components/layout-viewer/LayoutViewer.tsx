@@ -32,11 +32,8 @@ function suggestFixes(
   const unfittable: Panel[] = [];
 
   for (const panel of solution.unplacedPanels) {
-    const placedCount = solution.sheets.reduce(
-      (sum, sl) => sum + sl.placements.filter((pl) => pl.panelId === panel.id).length,
-      0
-    );
-    const unplacedCount = panel.quantity - placedCount;
+    // panel.quantity now equals the number of unplaced instances (set by solver)
+    const unplacedCount = panel.quantity;
     if (unplacedCount <= 0) continue;
 
     const fitting = stockSheets
@@ -291,13 +288,14 @@ export function LayoutViewer() {
       {/* ── Unplaced panel banner ─────────────────────────────────────── */}
       {activeSolution?.unplacedPanels.length > 0 && view === 'diagram' && (() => {
         const { suggestions, unfittable } = suggestFixes(activeSolution, stockSheets);
+        const totalUnplaced = activeSolution.unplacedPanels.reduce((s, p) => s + p.quantity, 0);
         return (
           <div className="mx-4 mt-3 rounded-xl border border-red-200 bg-red-50 shrink-0 overflow-hidden">
             {/* Header */}
             <div className="px-4 py-2.5 flex items-center gap-2 border-b border-red-100">
               <AlertTriangle className="h-4 w-4 text-red-500 shrink-0" />
               <span className="text-sm font-semibold text-red-800">
-                {activeSolution.unplacedPanels.length} panel{activeSolution.unplacedPanels.length !== 1 ? 's' : ''}{' '}couldn&apos;t fit
+                {totalUnplaced} panel{totalUnplaced !== 1 ? 's' : ''}{' '}couldn&apos;t fit
               </span>
             </div>
 
@@ -370,14 +368,17 @@ export function LayoutViewer() {
                       {activeSolution.totalWaste.toFixed(1)}%
                     </span>
                   </div>
-                  {activeSolution.unplacedPanels.length > 0 && (
-                    <>
-                      <div className="w-px h-5 bg-slate-200" />
-                      <span className="text-sm font-semibold text-red-500">
-                        ⚠ {activeSolution.unplacedPanels.length} panel{activeSolution.unplacedPanels.length !== 1 ? 's' : ''}{' '}couldn&apos;t fit
-                      </span>
-                    </>
-                  )}
+                  {activeSolution.unplacedPanels.length > 0 && (() => {
+                    const n = activeSolution.unplacedPanels.reduce((s, p) => s + p.quantity, 0);
+                    return (
+                      <>
+                        <div className="w-px h-5 bg-slate-200" />
+                        <span className="text-sm font-semibold text-red-500">
+                          ⚠ {n} panel{n !== 1 ? 's' : ''}{' '}couldn&apos;t fit
+                        </span>
+                      </>
+                    );
+                  })()}
                   {activeSolution.strategyName === 'Re-planned (anchored)' && (
                     <span className="ml-auto text-[11px] font-semibold text-amber-600 bg-amber-50
                                      border border-amber-200 rounded-full px-2.5 py-0.5">
@@ -391,11 +392,12 @@ export function LayoutViewer() {
                   const stockSheet = stockSheets.find(
                     (s) => s.id === sheetLayout.stockSheetId
                   );
+                  if (!stockSheet) return null;
                   return (
                     <SheetCanvas
                       key={`${sheetLayout.stockSheetId}-${sheetLayout.sheetIndex}`}
                       sheetLayout={sheetLayout}
-                      stockSheet={stockSheet!}
+                      stockSheet={stockSheet}
                       sheetNumber={i + 1}
                       onExpand={() => setExpandedSheetIdx(i)}
                     />
@@ -473,7 +475,7 @@ export function LayoutViewer() {
                 sheetLayout={sheetLayout}
                 stockSheet={stockSheet}
                 sheetNumber={idx + 1}
-                maxWidth={Math.min(Math.round(window.innerWidth * 0.88), 1400)}
+                maxWidth={Math.min(Math.round((typeof window !== 'undefined' ? window.innerWidth : 1400) * 0.88), 1400)}
               />
             </div>
           </div>

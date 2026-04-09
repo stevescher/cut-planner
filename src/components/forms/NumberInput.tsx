@@ -63,6 +63,10 @@ export function NumberInput({
     []
   );
 
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') e.currentTarget.blur();
+  }, []);
+
   return (
     <Input
       type="text"
@@ -70,6 +74,7 @@ export function NumberInput({
       onChange={handleChange}
       onFocus={handleFocus}
       onBlur={handleBlur}
+      onKeyDown={handleKeyDown}
       placeholder={placeholder}
       className={className}
     />

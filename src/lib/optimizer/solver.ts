@@ -49,8 +49,8 @@ function expandPanels(panels: Panel[]): ExpandedPanel[] {
 /** Get usable dimensions of a stock sheet after trim */
 function getUsableDimensions(sheet: StockSheet): { length: number; width: number } {
   return {
-    length: sheet.length - sheet.trimLeft - sheet.trimRight,
-    width: sheet.width - sheet.trimTop - sheet.trimBottom,
+    length: Math.max(0, sheet.length - sheet.trimLeft - sheet.trimRight),
+    width: Math.max(0, sheet.width - sheet.trimTop - sheet.trimBottom),
   };
 }
 
@@ -74,7 +74,7 @@ function solveWithStrategy(
   // Track open sheets and how many of each stock sheet type we've used
   const openSheets: OpenSheet[] = [];
   const sheetUsage = new Map<string, number>();
-  const unplaced: Panel[] = [];
+  const unplacedCounts = new Map<string, number>();
 
   // Sort stock sheets by area (largest first) for sheet selection
   const availableSheets = [...stockSheets]
@@ -162,15 +162,15 @@ function solveWithStrategy(
     }
 
     if (!placed) {
-      // Check if this panel was already counted as unplaced
-      const existing = unplaced.find(
-        (u) => u.id === panel.panelId
-      );
-      if (!existing) {
-        const original = panels.find((p) => p.id === panel.panelId);
-        if (original) unplaced.push(original);
-      }
+      unplacedCounts.set(panel.panelId, (unplacedCounts.get(panel.panelId) ?? 0) + 1);
     }
+  }
+
+  // Build unplaced list: quantity = number of unplaced instances (not original qty)
+  const unplaced: Panel[] = [];
+  for (const [panelId, count] of unplacedCounts.entries()) {
+    const original = panels.find((p) => p.id === panelId);
+    if (original) unplaced.push({ ...original, quantity: count });
   }
 
   // Build sheet layouts
@@ -259,6 +259,7 @@ export function solveAll(config: {
           .sort()
           .join('|')
       )
+      .sort()
       .join('||');
     if (!seen.has(key)) {
       seen.add(key);
