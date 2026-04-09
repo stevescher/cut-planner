@@ -19,18 +19,19 @@ const securityHeaders = [
   },
   {
     key: "Content-Security-Policy",
+    // unsafe-inline: required by Next.js hydration inline scripts and Tailwind CSS
     // unsafe-eval: required by jsPDF (uses Function() internally)
-    // unsafe-inline: required by Tailwind CSS (inline styles)
-    // blob:: required for object URLs (JSON export) and future Web Worker (comlink)
+    // blob:: required for object URLs (JSON export) and Web Worker (comlink)
     // data:: required for html-to-image PNG export (data URL canvas output)
+    // ws: wss:: required for Turbopack HMR WebSocket connections in development
     value: [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-eval' blob:",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob:",
       "font-src 'self'",
       "worker-src blob:",
-      "connect-src 'self'",
+      "connect-src 'self' ws: wss:",
       "object-src 'none'",
       "base-uri 'self'",
       "form-action 'self'",
