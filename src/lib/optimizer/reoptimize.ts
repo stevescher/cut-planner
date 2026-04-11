@@ -112,7 +112,42 @@ export function deriveCutSequenceFromPlacements(
   sheetW: number,
   sheetH: number,
 ): { steps: CutStep[]; isApproximate: boolean } {
-  if (placements.length < 2) return { steps: [], isApproximate: false };
+  if (placements.length === 0) return { steps: [], isApproximate: false };
+
+  // Single-panel sheet: emit the trim cuts needed to extract the piece.
+  // Two cuts at most — vertical at the piece's right edge, horizontal at its
+  // bottom edge — skipped when the piece already fills that dimension.
+  if (placements.length === 1) {
+    const p = placements[0];
+    const steps: CutStep[] = [];
+    let stepNum = 1;
+    const EPS = 0.05;
+
+    const rightEdge  = p.x + p.width;
+    const bottomEdge = p.y + p.height;
+
+    // Vertical trim cut (cross-cut to length) — only if waste exists to the right
+    if (rightEdge < sheetW - EPS) {
+      steps.push({
+        stepNumber: stepNum++,
+        orientation: 'vertical',
+        x1: rightEdge, y1: 0, x2: rightEdge, y2: sheetH,
+        segments: [{ x1: rightEdge, y1: 0, x2: rightEdge, y2: sheetH }],
+      });
+    }
+
+    // Horizontal trim cut (rip to width) — only if waste exists below
+    if (bottomEdge < sheetH - EPS) {
+      steps.push({
+        stepNumber: stepNum++,
+        orientation: 'horizontal',
+        x1: 0, y1: bottomEdge, x2: sheetW, y2: bottomEdge,
+        segments: [{ x1: 0, y1: bottomEdge, x2: sheetW, y2: bottomEdge }],
+      });
+    }
+
+    return { steps, isApproximate: false };
+  }
 
   const POS_EPS = 0.05;   // straddle-check tolerance (≈ saw kerf)
   const ALIGN_EPS = 0.25; // edge-alignment tolerance (~quarter inch)
