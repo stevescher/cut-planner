@@ -176,11 +176,8 @@ function solveWithStrategy(
   // Build sheet layouts
   const sheetLayouts: SheetLayout[] = openSheets.map((os) => {
     const placements = collectPlacements(os.tree);
-    const cutSequence = deriveCutSequenceFromPlacements(
-      placements,
-      os.stockSheet.length,
-      os.stockSheet.width,
-    );
+    const { steps: cutSequence, isApproximate: cutSequenceApproximate } =
+      deriveCutSequenceFromPlacements(placements, os.stockSheet.length, os.stockSheet.width);
     const usableL = os.stockSheet.length - os.stockSheet.trimLeft - os.stockSheet.trimRight;
     const usableW = os.stockSheet.width - os.stockSheet.trimTop - os.stockSheet.trimBottom;
     const totalArea = usableL * usableW;
@@ -192,6 +189,7 @@ function solveWithStrategy(
       sheetIndex: os.sheetIndex,
       placements,
       cutSequence,
+      cutSequenceApproximate,
       wastePercent,
       usedArea,
     };

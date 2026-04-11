@@ -158,10 +158,13 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
               if (pi !== dragState!.placementIndex) return pl;
               return { ...pl, x: snappedX, y: snappedY };
             });
+            const { steps: cutSequence, isApproximate: cutSequenceApproximate } =
+              deriveCutSequenceFromPlacements(newPlacements, sheetW, sheetH);
             return {
               ...sheet,
               placements: newPlacements,
-              cutSequence: deriveCutSequenceFromPlacements(newPlacements, sheetW, sheetH),
+              cutSequence,
+              cutSequenceApproximate,
             };
           }),
         };
@@ -216,10 +219,13 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
               return { ...pl, x: newX, y: newY, width: newW, height: newH, rotated: !pl.rotated };
             });
 
+            const { steps: cutSequence, isApproximate: cutSequenceApproximate } =
+              deriveCutSequenceFromPlacements(newPlacements, sheetW, sheetH);
             return {
               ...sheet,
               placements: newPlacements,
-              cutSequence: deriveCutSequenceFromPlacements(newPlacements, sheetW, sheetH),
+              cutSequence,
+              cutSequenceApproximate,
             };
           }),
         };
@@ -467,6 +473,8 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
           // Badge goes at the stored anchor midpoint
           const bx = PADDING + ((cut.x1 + cut.x2) / 2) * scale;
           const by = PADDING + ((cut.y1 + cut.y2) / 2) * scale;
+          // Approximate cuts render in amber to signal they may pass through a piece
+          const cutColor = cut.approximate ? '#f59e0b' : '#ef4444';
           return (
             <g key={`cut-${cut.stepNumber}`}>
               {segs.map((seg, si) => (
@@ -474,10 +482,10 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
                   key={si}
                   x1={PADDING + seg.x1 * scale} y1={PADDING + seg.y1 * scale}
                   x2={PADDING + seg.x2 * scale} y2={PADDING + seg.y2 * scale}
-                  stroke="#ef4444" strokeWidth={1.5} strokeDasharray="4 2"
+                  stroke={cutColor} strokeWidth={1.5} strokeDasharray="4 2"
                 />
               ))}
-              <circle cx={bx} cy={by} r={8} fill="#ef4444" />
+              <circle cx={bx} cy={by} r={8} fill={cutColor} />
               <text
                 x={bx} y={by}
                 textAnchor="middle" dominantBaseline="central"
@@ -519,6 +527,14 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
           </button>
         )}
       </div>{/* end relative wrapper */}
+
+      {/* ── Approximate cut sequence notice ─────────────────────────────── */}
+      {showCutSequence && sheetLayout.cutSequenceApproximate && (
+        <p className="mt-1 text-xs text-amber-600 flex items-center gap-1">
+          <span aria-hidden>⚠</span>
+          Cut sequence is approximate — pieces are not in a guillotine-valid layout. Amber cuts may pass through a piece; re-optimize to restore a valid sequence.
+        </p>
+      )}
 
       {/* ── Piece legend (deduplicated) ──────────────────────────────────── */}
       {(() => {

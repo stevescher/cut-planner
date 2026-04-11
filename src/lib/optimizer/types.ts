@@ -49,6 +49,11 @@ export interface CutStep {
    * Falls back to the x1/y1→x2/y2 span when not present (legacy data).
    */
   segments: Array<{ x1: number; y1: number; x2: number; y2: number }>;
+  /**
+   * True when no clean guillotine cut was found and this is a best-effort
+   * approximation. The cut line may pass through a placed piece.
+   */
+  approximate?: boolean;
 }
 
 /** One stock sheet with its assigned placements */
@@ -57,6 +62,12 @@ export interface SheetLayout {
   sheetIndex: number;
   placements: Placement[];
   cutSequence: CutStep[];
+  /**
+   * True when at least one cut in the sequence is approximate (non-guillotine-
+   * valid layout). Cuts shown after manual drags may not reflect a real saw
+   * sequence.
+   */
+  cutSequenceApproximate?: boolean;
   wastePercent: number;
   usedArea: number;
 }
