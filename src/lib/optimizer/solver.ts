@@ -19,6 +19,7 @@ interface ExpandedPanel {
   length: number;
   width: number;
   originalIndex: number;
+  lockRotation: boolean;
 }
 
 interface OpenSheet {
@@ -40,6 +41,7 @@ function expandPanels(panels: Panel[]): ExpandedPanel[] {
         length: panel.length,
         width: panel.width,
         originalIndex: idx,
+        lockRotation: panel.lockRotation,
       });
     }
   });
@@ -81,7 +83,7 @@ function solveWithStrategy(
     .filter((s) => s.length > 0 && s.width > 0)
     .sort((a, b) => a.length * a.width - b.length * b.width); // smallest first to minimize waste
 
-  function openNewSheet(minLength: number, minWidth: number): OpenSheet | null {
+  function openNewSheet(minLength: number, minWidth: number, canRotate: boolean): OpenSheet | null {
     // Find the smallest stock sheet that can fit the piece
     for (const ss of availableSheets) {
       const usable = getUsableDimensions(ss);
@@ -90,7 +92,7 @@ function solveWithStrategy(
 
       const fits =
         (usable.length >= minLength && usable.width >= minWidth) ||
-        (strategy.allowRotation &&
+        (canRotate &&
           usable.length >= minWidth &&
           usable.width >= minLength);
 
@@ -121,6 +123,9 @@ function solveWithStrategy(
     const color = getColor(panel.originalIndex);
     let placed = false;
 
+    // Per-piece rotation: strategy may allow rotation, but lockRotation overrides it
+    const allowRotation = strategy.allowRotation && !panel.lockRotation;
+
     // Try existing open sheets
     for (const os of openSheets) {
       const placement = placeInTree(
@@ -131,7 +136,7 @@ function solveWithStrategy(
         panel.width,
         strategy.selectionRule,
         strategy.splitRule,
-        strategy.allowRotation,
+        allowRotation,
         { panelId: panel.panelId, label: panel.label, color }
       );
       if (placement) {
@@ -142,7 +147,7 @@ function solveWithStrategy(
 
     // Open a new sheet if needed
     if (!placed) {
-      const newSheet = openNewSheet(pieceW, pieceH);
+      const newSheet = openNewSheet(pieceW, pieceH, allowRotation);
       if (newSheet) {
         const placement = placeInTree(
           newSheet.tree,
@@ -152,7 +157,7 @@ function solveWithStrategy(
           panel.width,
           strategy.selectionRule,
           strategy.splitRule,
-          strategy.allowRotation,
+          allowRotation,
           { panelId: panel.panelId, label: panel.label, color }
         );
         if (placement) {

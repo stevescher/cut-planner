@@ -26,7 +26,7 @@ const DEFAULT_MAX_WIDTH = 800;
 export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, onExpand }: SheetCanvasProps) {
   const MAX_WIDTH = maxWidth ?? DEFAULT_MAX_WIDTH;
   const { showLabels, viewMode, showCutSequence, showEdgeDims, zoom } = useViewStore();
-  const { units } = useProjectStore();
+  const { units, panels } = useProjectStore();
   const fmt = (v: number) => formatDisplay(v, units);
   const sfx = unitSuffix(units);
   const monoMode = viewMode === 'mono';
@@ -343,6 +343,7 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
           // For small pieces, float the button above-left the piece; otherwise inside bottom-left
           const rotateBtnX = smallPiece ? px + rotateBtnSize : px + rotateBtnSize + 3;
           const rotateBtnY = smallPiece ? py - rotateBtnSize - 2 : py + ph - rotateBtnSize - 3;
+          const rotationLocked = panels.find(pl => pl.id === p.panelId)?.lockRotation ?? false;
 
           return (
             <g
@@ -359,7 +360,22 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
               />
 
               {/* Rotate button — bottom-left corner (or above piece if too small) */}
-              {(
+              {rotationLocked ? (
+                <g>
+                  <circle
+                    cx={rotateBtnX} cy={rotateBtnY} r={rotateBtnSize}
+                    fill="rgba(245,158,11,0.6)"
+                  />
+                  <text
+                    x={rotateBtnX} y={rotateBtnY}
+                    textAnchor="middle" dominantBaseline="central"
+                    fill="white" fontSize={8}
+                    style={{ pointerEvents: 'none', userSelect: 'none' }}
+                  >
+                    🔒
+                  </text>
+                </g>
+              ) : (
                 <g
                   onClick={(e) => handleRotate(e, i)}
                   style={{ cursor: 'pointer' }}

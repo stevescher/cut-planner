@@ -49,6 +49,7 @@ function createDefaultPanel(overrides?: Partial<Panel>): Panel {
     length: 0,
     width: 0,
     quantity: 1,
+    lockRotation: false,
     ...overrides,
   };
 }

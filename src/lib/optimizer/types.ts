@@ -18,6 +18,8 @@ export interface Panel {
   length: number; // inches
   width: number; // inches
   quantity: number;
+  /** When true, the optimizer will not rotate this panel — grain/face direction is preserved */
+  lockRotation: boolean;
 }
 
 /** A panel placed on a specific sheet */
