@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
 import { Plus_Jakarta_Sans } from "next/font/google";
+import { Suspense } from "react";
+import { PostHogPageView } from "@/components/PostHogPageView";
+import { PHProvider } from "./providers";
 import "./globals.css";
 
 const jakarta = Plus_Jakarta_Sans({
@@ -21,7 +24,14 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${jakarta.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col">{children}</body>
+      <PHProvider>
+        <body className="min-h-full flex flex-col">
+          <Suspense>
+            <PostHogPageView />
+          </Suspense>
+          {children}
+        </body>
+      </PHProvider>
     </html>
   );
 }

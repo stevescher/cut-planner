@@ -31,7 +31,7 @@ const securityHeaders = [
       "img-src 'self' data: blob:",
       "font-src 'self'",
       "worker-src blob:",
-      "connect-src 'self' ws: wss:",
+      "connect-src 'self' ws: wss: https://us.i.posthog.com https://us-assets.i.posthog.com https://*.ingest.us.sentry.io",
       "object-src 'none'",
       "base-uri 'self'",
       "form-action 'self'",
