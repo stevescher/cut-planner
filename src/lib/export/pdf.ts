@@ -21,6 +21,37 @@ function drawPageFooter(pdf: jsPDF, projectName: string, pageNum: number, totalP
 
 // ── Page 1: Project summary + panels needed ──────────────────────────────────
 
+export const ROW_H = 0.27;
+// Vertical space drawTableHeader consumes between its start y and the first row:
+// 0.3 (title→columns) + 0.08 (columns→rule) + 0.22 (rule→first row).
+const TABLE_HEADER_H = 0.6;
+const SUMMARY_FIRST_HEADER_Y = 1.25; // page-1 table header start (below title+stats)
+const SUMMARY_CONT_HEADER_Y = 0.5;   // continuation-page table header start
+export const SUMMARY_ROW_BOTTOM_MARGIN = 0.3;
+export const SUMMARY_HEADER_STARTS = {
+  first: SUMMARY_FIRST_HEADER_Y,
+  cont: SUMMARY_CONT_HEADER_Y,
+  headerHeight: TABLE_HEADER_H,
+} as const;
+
+/** Rows a summary page can hold, measured from where the first ROW is actually
+ *  rendered (header start + header height) to the footer margin. */
+export function summaryRowsFor(pageH: number, margin: number, firstPage: boolean): number {
+  const headerStart = margin + (firstPage ? SUMMARY_FIRST_HEADER_Y : SUMMARY_CONT_HEADER_Y);
+  const firstRowY = headerStart + TABLE_HEADER_H;
+  const bottom = pageH - margin - 0.3; // leave room for footer
+  return Math.max(1, Math.floor((bottom - firstRowY) / ROW_H) + 1);
+}
+
+/** How many pages the "Panels Needed" table will occupy. */
+export function summaryPageCount(panelCount: number, pageH: number, margin: number): number {
+  const first = summaryRowsFor(pageH, margin, true);
+  if (panelCount <= first) return 1;
+  const rest = summaryRowsFor(pageH, margin, false);
+  return 1 + Math.ceil((panelCount - first) / rest);
+}
+
+/** Draw the summary + paginated panel table. Returns the number of pages used. */
 function drawSummaryPage(
   pdf: jsPDF,
   solution: Solution,
@@ -28,10 +59,37 @@ function drawSummaryPage(
   projectName: string,
   margin: number,
   pageW: number,
+  pageH: number,
+  totalPages: number,
   units: Units,
-) {
+): number {
   const sfx = unitSuffix(units);
   const fmt = (v: number) => formatDisplay(v, units);
+  let pageNum = 1;
+
+  const drawTableHeader = (yStart: number): number => {
+    let yy = yStart;
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(11);
+    pdf.setTextColor(30, 30, 30);
+    pdf.text('Panels Needed', margin, yy);
+    yy += 0.3;
+    pdf.setFontSize(8);
+    pdf.setTextColor(120, 120, 120);
+    pdf.text('Label', margin + 0.18, yy);
+    pdf.text('Length', margin + 2.5, yy);
+    pdf.text('Width', margin + 3.5, yy);
+    pdf.text('Qty', margin + 4.5, yy);
+    yy += 0.08;
+    pdf.setDrawColor(220, 220, 220);
+    pdf.setLineWidth(0.005);
+    pdf.line(margin, yy, margin + 5.2, yy);
+    yy += 0.22;
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(9);
+    pdf.setTextColor(40, 40, 40);
+    return yy;
+  };
   // Title
   pdf.setFont('helvetica', 'bold');
   pdf.setFontSize(18);
@@ -56,40 +114,28 @@ function drawSummaryPage(
   pdf.setLineWidth(0.008);
   pdf.line(margin, margin + 0.95, pageW - margin, margin + 0.95);
 
-  // Panels needed heading
-  let y = margin + 1.25;
-  pdf.setFont('helvetica', 'bold');
-  pdf.setFontSize(11);
-  pdf.setTextColor(30, 30, 30);
-  pdf.text('Panels Needed', margin, y);
-
-  // Column headers
-  y += 0.3;
-  pdf.setFontSize(8);
-  pdf.setTextColor(120, 120, 120);
-  pdf.text('Label', margin + 0.18, y);
-  pdf.text('Length', margin + 2.5, y);
-  pdf.text('Width', margin + 3.5, y);
-  pdf.text('Qty', margin + 4.5, y);
-
-  y += 0.08;
-  pdf.setDrawColor(220, 220, 220);
-  pdf.setLineWidth(0.005);
-  pdf.line(margin, y, margin + 5.2, y);
-  y += 0.22;
-
-  pdf.setFont('helvetica', 'normal');
-  pdf.setFontSize(9);
-  pdf.setTextColor(40, 40, 40);
+  // Panels needed — paginate so a long list never runs off the page. The row
+  // threshold and header-start constants are shared with summaryRowsFor so the
+  // predicted page count (used for footer numbering) always matches what renders.
+  let y = drawTableHeader(margin + SUMMARY_FIRST_HEADER_Y);
+  const rowBottom = pageH - margin - 0.3;
 
   for (let i = 0; i < panels.length; i++) {
+    if (y > rowBottom) {
+      drawPageFooter(pdf, projectName, pageNum, totalPages, pageW, pageH, margin);
+      pdf.addPage();
+      pageNum++;
+      y = drawTableHeader(margin + SUMMARY_CONT_HEADER_Y);
+    }
     const p = panels[i];
     pdf.text(p.label || `Panel ${i + 1}`, margin + 0.18, y);
     pdf.text(`${fmt(p.length)}${sfx}`, margin + 2.5, y);
     pdf.text(`${fmt(p.width)}${sfx}`, margin + 3.5, y);
     pdf.text(String(p.quantity), margin + 4.5, y);
-    y += 0.27;
+    y += ROW_H;
   }
+
+  return pageNum;
 }
 
 // ── Per-sheet pages: diagram (top) + cut list (bottom) ───────────────────────
@@ -253,16 +299,22 @@ export async function exportSolutionAsPdf(
   const pageH = 8.5;
   const margin = 0.5;
 
-  const totalPages = 1 + solution.sheets.length;
+  const summaryPages = summaryPageCount(panels.length, pageH, margin);
+  const totalPages = summaryPages + solution.sheets.length;
 
-  // Page 1: summary + panels needed
-  drawSummaryPage(pdf, solution, panels, projectName, margin, pageW, units);
-  drawPageFooter(pdf, projectName, 1, totalPages, pageW, pageH, margin);
+  // Pages 1..summaryPages: summary + (paginated) panels-needed table
+  const usedSummaryPages = drawSummaryPage(
+    pdf, solution, panels, projectName, margin, pageW, pageH, totalPages, units
+  );
+  drawPageFooter(pdf, projectName, usedSummaryPages, totalPages, pageW, pageH, margin);
 
-  // Pages 2+: one per sheet
+  // Remaining pages: one per sheet, numbered after the summary pages
   for (let si = 0; si < solution.sheets.length; si++) {
     pdf.addPage();
-    drawSheetPage(pdf, solution, si, stockSheets, margin, pageW, pageH, projectName, si + 2, totalPages, units);
+    drawSheetPage(
+      pdf, solution, si, stockSheets, margin, pageW, pageH,
+      projectName, summaryPages + si + 1, totalPages, units
+    );
   }
 
   pdf.save(`${projectName || 'cut-planner'}.pdf`);

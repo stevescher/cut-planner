@@ -21,6 +21,8 @@ interface ProjectState {
   addPanel: (panel?: Partial<Panel>) => void;
   updatePanel: (id: string, updates: Partial<Panel>) => void;
   removePanel: (id: string) => void;
+  /** Replace the whole panel list in one write (used by bulk CSV import). */
+  setPanels: (panels: Panel[]) => void;
 
   getProjectData: () => ProjectData;
   loadProjectData: (data: ProjectData) => void;
@@ -98,6 +100,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set((state) => ({
       panels: state.panels.filter((p) => p.id !== id),
     })),
+
+  setPanels: (panels) => set({ panels }),
 
   getProjectData: () => {
     const state = get();

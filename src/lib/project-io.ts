@@ -2,6 +2,10 @@ import { ProjectData } from './optimizer/types';
 
 const STORAGE_KEY = 'cut-planner-project';
 
+/** Current on-disk schema version. Bump when the shape changes and add a
+ *  migration step in migrateProjectData below. */
+const CURRENT_VERSION = 1 as const;
+
 const MAX_DIMENSION = 10_000; // inches — no realistic sheet exceeds this
 
 function isFinitePositive(v: unknown): v is number {
@@ -16,7 +20,9 @@ function validateProjectData(data: unknown): data is ProjectData {
   if (!data || typeof data !== 'object') return false;
   const d = data as Record<string, unknown>;
 
-  if (d.version !== 1) return false;
+  // Accept the current version or any older version we know how to migrate.
+  // A newer version (saved by a future build) is rejected rather than trusted.
+  if (typeof d.version !== 'number' || d.version < 1 || d.version > CURRENT_VERSION) return false;
   if (typeof d.name !== 'string' || d.name.length > 200) return false;
   if (typeof d.savedAt !== 'string') return false;
   if (!isFiniteNonNegative(d.kerf) || (d.kerf as number) > 1) return false;
@@ -47,22 +53,39 @@ function validateProjectData(data: unknown): data is ProjectData {
     if (!isFinitePositive(panel.length) || (panel.length as number) > MAX_DIMENSION) return false;
     if (!isFinitePositive(panel.width) || (panel.width as number) > MAX_DIMENSION) return false;
     if (!Number.isInteger(panel.quantity) || (panel.quantity as number) < 1 || (panel.quantity as number) > 100) return false;
+    // lockRotation is optional (backfilled on load); reject only a wrong type.
+    if (panel.lockRotation !== undefined && typeof panel.lockRotation !== 'boolean') return false;
   }
 
   return true;
 }
 
-export function saveToLocalStorage(data: ProjectData): void {
+/**
+ * Persist the project. Returns true on success, false if the write failed
+ * (quota exceeded, private-mode Safari, storage disabled) so callers can warn
+ * the user that autosave stopped working instead of silently losing data.
+ */
+export function saveToLocalStorage(data: ProjectData): boolean {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  } catch {
-    console.warn('Failed to save to localStorage');
+    return true;
+  } catch (e) {
+    console.warn('Failed to save to localStorage', e);
+    return false;
   }
 }
 
-function normalizeProjectData(data: ProjectData): ProjectData {
-  if (!data.units) return { ...data, units: 'imperial' };
-  return data;
+/**
+ * Bring a validated (current-or-older) project up to the current schema:
+ * backfill fields that newer versions added, then stamp the current version.
+ */
+function migrateProjectData(data: ProjectData): ProjectData {
+  return {
+    ...data,
+    version: CURRENT_VERSION,
+    units: data.units ?? 'imperial',
+    panels: data.panels.map((p) => ({ ...p, lockRotation: p.lockRotation ?? false })),
+  };
 }
 
 export function loadFromLocalStorage(): ProjectData | null {
@@ -71,7 +94,7 @@ export function loadFromLocalStorage(): ProjectData | null {
     if (!raw) return null;
     const data: unknown = JSON.parse(raw);
     if (!validateProjectData(data)) return null;
-    return normalizeProjectData(data);
+    return migrateProjectData(data);
   } catch {
     return null;
   }
@@ -111,7 +134,7 @@ export function importProjectFromFile(): Promise<ProjectData | null> {
           resolve(null);
           return;
         }
-        resolve(normalizeProjectData(data));
+        resolve(migrateProjectData(data));
       } catch {
         resolve(null);
       }

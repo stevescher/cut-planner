@@ -26,7 +26,8 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
 
   pushState: (entry) =>
     set((state) => ({
-      past: [...state.past.slice(-MAX_HISTORY), entry],
+      // Keep at most MAX_HISTORY entries total once this one is appended.
+      past: [...state.past.slice(-(MAX_HISTORY - 1)), entry],
       future: [],
     })),
 

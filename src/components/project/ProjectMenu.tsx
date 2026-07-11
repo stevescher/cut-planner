@@ -1,6 +1,8 @@
 'use client';
 
 import { useProjectStore } from '@/store/useProjectStore';
+import { useLayoutStore } from '@/store/useLayoutStore';
+import { useHistoryStore } from '@/store/useHistoryStore';
 import { exportProjectToFile, importProjectFromFile } from '@/lib/project-io';
 import { Button } from '@/components/ui/button';
 import {
@@ -22,11 +24,22 @@ export function ProjectMenu() {
     exportProjectToFile(data);
   };
 
+  // Loading or starting a new project must also drop the previous project's
+  // computed solutions and undo history, or the viewer shows stale layouts and
+  // undo can jump back into the old project's state.
   const handleImport = async () => {
     const data = await importProjectFromFile();
     if (data) {
       loadProjectData(data);
+      useLayoutStore.getState().reset();
+      useHistoryStore.getState().clear();
     }
+  };
+
+  const handleNewProject = () => {
+    reset();
+    useLayoutStore.getState().reset();
+    useHistoryStore.getState().clear();
   };
 
   return (
@@ -53,7 +66,7 @@ export function ProjectMenu() {
             Load from File
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={reset}>
+          <DropdownMenuItem onClick={handleNewProject}>
             <FilePlus className="h-4 w-4 mr-2" />
             New Project
           </DropdownMenuItem>

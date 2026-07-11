@@ -16,34 +16,49 @@ interface ParsedRow {
   error?: string;
 }
 
-/** Parse a CSV text into rows, handling quoted fields */
-function parseCSV(text: string): string[][] {
-  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
-  return lines
-    .filter((l) => l.trim() !== '')
-    .map((line) => {
-      const fields: string[] = [];
-      let cur = '';
-      let inQuote = false;
-      for (let i = 0; i < line.length; i++) {
-        const ch = line[i];
-        if (ch === '"') {
-          if (inQuote && line[i + 1] === '"') {
-            cur += '"';
-            i++;
-          } else {
-            inQuote = !inQuote;
-          }
-        } else if (ch === ',' && !inQuote) {
-          fields.push(cur.trim());
-          cur = '';
-        } else {
-          cur += ch;
-        }
+/**
+ * Parse CSV text into rows (RFC 4180). A single character-stream pass so a
+ * newline *inside* a quoted field (common in Excel exports) stays part of that
+ * field instead of splitting the row.
+ */
+export function parseCSV(text: string): string[][] {
+  const src = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const rows: string[][] = [];
+  let fields: string[] = [];
+  let cur = '';
+  let inQuote = false;
+
+  for (let i = 0; i < src.length; i++) {
+    const ch = src[i];
+    if (inQuote) {
+      if (ch === '"') {
+        if (src[i + 1] === '"') { cur += '"'; i++; }  // escaped quote
+        else inQuote = false;
+      } else {
+        cur += ch;                                     // includes newlines
       }
+    } else if (ch === '"') {
+      inQuote = true;
+    } else if (ch === ',') {
       fields.push(cur.trim());
-      return fields;
-    });
+      cur = '';
+    } else if (ch === '\n') {
+      fields.push(cur.trim());
+      rows.push(fields);
+      fields = [];
+      cur = '';
+    } else {
+      cur += ch;
+    }
+  }
+  // Flush the trailing field/row (no final newline).
+  if (cur !== '' || fields.length > 0) {
+    fields.push(cur.trim());
+    rows.push(fields);
+  }
+
+  // Drop rows that are entirely empty.
+  return rows.filter((r) => r.some((f) => f !== ''));
 }
 
 /** Parse CSV text into preview rows, with per-row error messages */
@@ -80,13 +95,18 @@ function parseRows(csvText: string, units: 'imperial' | 'metric'): ParsedRow[] {
 
     const length = parseInput(rawLength, units);
     const width = parseInput(rawWidth, units);
-    const qty = Math.max(1, Math.round(parseFloat(rawQty) || 1));
+    // Clamp qty to the same 1..100 range the project validator enforces, so a
+    // fat-fingered "9999" can't be imported and later choke the optimizer.
+    const parsedQty = parseFloat(rawQty);
+    const qty = Math.min(100, Math.max(1, Math.round(isFinite(parsedQty) ? parsedQty : 1)));
 
     const errors: string[] = [];
     if (!isFinite(length) || length <= 0)
       errors.push(`invalid length "${rawLength}"`);
     if (!isFinite(width) || width <= 0)
       errors.push(`invalid width "${rawWidth}"`);
+    if (rawQty.trim() !== '' && !isFinite(parsedQty))
+      errors.push(`invalid qty "${rawQty}"`);
 
     parsed.push({
       rowNum,
@@ -126,7 +146,7 @@ interface PanelImportProps {
 }
 
 export function PanelImport({ onClose }: PanelImportProps) {
-  const { panels, addPanel, updatePanel, units } = useProjectStore();
+  const { units } = useProjectStore();
   const [parsedRows, setParsedRows] = useState<ParsedRow[] | null>(null);
   const [fileName, setFileName] = useState('');
   const [mergeMode, setMergeMode] = useState<'replace' | 'merge'>('replace');
@@ -169,29 +189,14 @@ export function PanelImport({ onClose }: PanelImportProps) {
       lockRotation: false,
     }));
 
+    const store = useProjectStore.getState();
     if (mergeMode === 'replace') {
-      // Replace all panels — reuse existing IDs where possible to avoid flash
-      const store = useProjectStore.getState();
-      // Remove extras
-      const existingIds = store.panels.map((p) => p.id);
-      // Add/update
-      newPanels.forEach((p, i) => {
-        if (i < existingIds.length) {
-          store.updatePanel(existingIds[i], p);
-        } else {
-          store.addPanel(p);
-        }
-      });
-      // Remove panels beyond the new count
-      existingIds.slice(newPanels.length).forEach((id) => {
-        // Only remove if there's more than 1 panel remaining
-        if (useProjectStore.getState().panels.length > 1) {
-          useProjectStore.getState().removePanel(id);
-        }
-      });
+      // One atomic write — avoids N autosave cycles and the mid-loop live-state
+      // read the old per-panel loop depended on.
+      store.setPanels(newPanels);
     } else {
-      // Merge: append to existing list
-      newPanels.forEach((p) => addPanel(p));
+      // Merge: append to the existing list in a single write.
+      store.setPanels([...store.panels, ...newPanels]);
     }
 
     onClose();

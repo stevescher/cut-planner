@@ -13,6 +13,7 @@ import { ExportMenu } from '@/components/export/ExportMenu';
 import { useProjectStore } from '@/store/useProjectStore';
 import { useLayoutStore } from '@/store/useLayoutStore';
 import { useHistoryStore } from '@/store/useHistoryStore';
+import { useSaveStatusStore } from '@/store/useSaveStatusStore';
 import { useOptimizer } from '@/hooks/useOptimizer';
 import { Button } from '@/components/ui/button';
 import { Scissors, Undo2, Redo2 } from 'lucide-react';
@@ -47,6 +48,7 @@ export default function Home() {
 
   const { stockSheets, panels } = useProjectStore();
   const { isOptimizing, solutions } = useLayoutStore();
+  const saveFailed = useSaveStatusStore((s) => s.saveFailed);
   const optimize = useOptimizer();
   const canUndo = useHistoryStore((s) => s.past.length > 0);
   const canRedo = useHistoryStore((s) => s.future.length > 0);
@@ -124,6 +126,17 @@ export default function Home() {
           )}
         </div>
       </header>
+
+      {/* Autosave failure banner — storage full or unavailable */}
+      {saveFailed && (
+        <div
+          role="alert"
+          className="shrink-0 bg-amber-50 border-b border-amber-200 text-amber-800 text-xs px-4 py-2 text-center"
+        >
+          Autosave failed — your browser storage may be full or disabled. Export your project
+          to a file to avoid losing work.
+        </div>
+      )}
 
       {/* ── Body ───────────────────────────────────────────────────────── */}
       <div className="flex flex-1 min-h-0">
