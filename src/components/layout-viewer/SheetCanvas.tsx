@@ -93,7 +93,16 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
         y: Math.max(stockSheet.trimTop, Math.min(y, sheetH - stockSheet.trimBottom - p.height)),
       };
     },
-    [sheetLayout.placements, sheetW, sheetH, scale]
+    [
+      sheetLayout.placements,
+      sheetW,
+      sheetH,
+      scale,
+      stockSheet.trimLeft,
+      stockSheet.trimRight,
+      stockSheet.trimTop,
+      stockSheet.trimBottom,
+    ]
   );
 
   // ── Drag handlers ──────────────────────────────────────────────────────────
@@ -130,7 +139,18 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
       const { x: newX, y: newY } = snapToEdges(rawX, rawY, dragState.placementIndex);
       setDragState((prev) => prev ? { ...prev, currentX: newX, currentY: newY } : null);
     },
-    [dragState, getSvgPoint, sheetLayout.placements, sheetW, sheetH, snapToEdges]
+    [
+      dragState,
+      getSvgPoint,
+      sheetLayout.placements,
+      sheetW,
+      sheetH,
+      snapToEdges,
+      stockSheet.trimLeft,
+      stockSheet.trimRight,
+      stockSheet.trimTop,
+      stockSheet.trimBottom,
+    ]
   );
 
   const handlePointerUp = useCallback(() => {
@@ -159,7 +179,12 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
               return { ...pl, x: snappedX, y: snappedY };
             });
             const { steps: cutSequence, isApproximate: cutSequenceApproximate } =
-              deriveCutSequenceFromPlacements(newPlacements, sheetW, sheetH);
+              deriveCutSequenceFromPlacements(newPlacements, sheetW, sheetH, {
+                left: stockSheet.trimLeft,
+                top: stockSheet.trimTop,
+                right: stockSheet.trimRight,
+                bottom: stockSheet.trimBottom,
+              });
             return {
               ...sheet,
               placements: newPlacements,
@@ -176,7 +201,7 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
       }
     }
     setDragState(null);
-  }, [dragState, sheetLayout, stockSheet.id, sheetKey, sheetW, sheetH, isPinned, togglePin]);
+  }, [dragState, sheetLayout, stockSheet, sheetKey, sheetW, sheetH, isPinned, togglePin]);
 
   // ── Pin click ──────────────────────────────────────────────────────────────
 
@@ -245,7 +270,12 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
             });
 
             const { steps: cutSequence, isApproximate: cutSequenceApproximate } =
-              deriveCutSequenceFromPlacements(newPlacements, sheetW, sheetH);
+              deriveCutSequenceFromPlacements(newPlacements, sheetW, sheetH, {
+                left: stockSheet.trimLeft,
+                top: stockSheet.trimTop,
+                right: stockSheet.trimRight,
+                bottom: stockSheet.trimBottom,
+              });
             return {
               ...sheet,
               placements: newPlacements,

@@ -1,5 +1,6 @@
 import { nanoid } from 'nanoid';
 import { Solution, SheetLayout, StockSheet, Placement, CutStep } from './types';
+import { FIT_EPS } from './guillotine';
 
 // ─── Free-rectangle helpers ───────────────────────────────────────────────────
 
@@ -46,6 +47,29 @@ function pruneContained(freeRects: FreeRect[]): FreeRect[] {
 
 function dist2(ax: number, ay: number, bx: number, by: number): number {
   return (ax - bx) ** 2 + (ay - by) ** 2;
+}
+
+/**
+ * Reserve a placed piece plus a saw-kerf gap on every side, then remove it from
+ * the free rectangles. Padding on all four sides (not just right/bottom) is what
+ * guarantees a neighbouring part can never butt directly against this one with
+ * zero blade clearance — a piece placed away from the origin has free space on
+ * its left/top too, and that space must also lose a kerf.
+ */
+function reserveWithKerf(
+  freeRects: FreeRect[],
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  kerf: number,
+): FreeRect[] {
+  return subtractRect(freeRects, {
+    x: x - kerf,
+    y: y - kerf,
+    w: w + 2 * kerf,
+    h: h + 2 * kerf,
+  });
 }
 
 // ─── Cut-sequence from placements ─────────────────────────────────────────────
@@ -111,45 +135,109 @@ export function deriveCutSequenceFromPlacements(
   placements: Placement[],
   sheetW: number,
   sheetH: number,
+  trim: { left: number; top: number; right: number; bottom: number } = {
+    left: 0,
+    top: 0,
+    right: 0,
+    bottom: 0,
+  },
 ): { steps: CutStep[]; isApproximate: boolean } {
   if (placements.length === 0) return { steps: [], isApproximate: false };
 
-  // Single-panel sheet: emit the trim cuts needed to extract the piece.
-  // Two cuts at most — vertical at the piece's right edge, horizontal at its
-  // bottom edge — skipped when the piece already fills that dimension.
+  // A trim margin / offcut is "present" whenever it is more than a rounding hair
+  // above zero. This must NOT scale with kerf: a trim or leftover equal to the
+  // blade width (a common 1/8" trim with a 1/8" kerf, or a 95.9" part on a 96"
+  // sheet) still needs its square-the-stock / cross-cut instruction, since the
+  // placement dimensions are recorded exactly and the stock must be cut to them.
+  const TRIM_EPS = 1e-4;
+
+  // Usable region after squaring the stock (removing trim margins). Placements
+  // live inside this box; cuts must be planned within it, not the raw sheet, or
+  // the trim margins get folded into piece-separating cuts and the sequence
+  // never starts by squaring the board.
+  const usable = {
+    x0: trim.left,
+    y0: trim.top,
+    x1: sheetW - trim.right,
+    y1: sheetH - trim.bottom,
+  };
+
+  // Explicit "square the stock" trim cuts — emitted first when a trim margin
+  // exists, so the printed sequence tells the user to cut the board to its
+  // usable size before ripping parts.
+  const trimSteps: CutStep[] = [];
+  let stepNum = 1;
+  if (trim.left > TRIM_EPS) {
+    trimSteps.push({
+      stepNumber: stepNum++, orientation: 'vertical',
+      x1: usable.x0, y1: 0, x2: usable.x0, y2: sheetH,
+      segments: [{ x1: usable.x0, y1: 0, x2: usable.x0, y2: sheetH }],
+    });
+  }
+  if (trim.right > TRIM_EPS) {
+    trimSteps.push({
+      stepNumber: stepNum++, orientation: 'vertical',
+      x1: usable.x1, y1: 0, x2: usable.x1, y2: sheetH,
+      segments: [{ x1: usable.x1, y1: 0, x2: usable.x1, y2: sheetH }],
+    });
+  }
+  if (trim.top > TRIM_EPS) {
+    trimSteps.push({
+      stepNumber: stepNum++, orientation: 'horizontal',
+      x1: 0, y1: usable.y0, x2: sheetW, y2: usable.y0,
+      segments: [{ x1: 0, y1: usable.y0, x2: sheetW, y2: usable.y0 }],
+    });
+  }
+  if (trim.bottom > TRIM_EPS) {
+    trimSteps.push({
+      stepNumber: stepNum++, orientation: 'horizontal',
+      x1: 0, y1: usable.y1, x2: sheetW, y2: usable.y1,
+      segments: [{ x1: 0, y1: usable.y1, x2: sheetW, y2: usable.y1 }],
+    });
+  }
+
+  // Single-panel sheet: trim cuts (above) plus the two cuts that free the piece
+  // from the remaining usable waste — vertical at its right edge, horizontal at
+  // its bottom edge — skipped when the piece already fills that dimension.
   if (placements.length === 1) {
     const p = placements[0];
-    const steps: CutStep[] = [];
-    let stepNum = 1;
-    const EPS = 0.05;
+    const steps: CutStep[] = [...trimSteps];
 
     const rightEdge  = p.x + p.width;
     const bottomEdge = p.y + p.height;
 
-    // Vertical trim cut (cross-cut to length) — only if waste exists to the right
-    if (rightEdge < sheetW - EPS) {
+    // Vertical cut (cross-cut to length) — emit whenever any real offcut exists.
+    // The threshold is a rounding tolerance, NOT the kerf: a 95.9" part on a 96"
+    // sheet leaves only 0.1" of waste (< a 1/8" blade) but the stock still must
+    // be cut down to the recorded part size, so the instruction must appear.
+    if (rightEdge < usable.x1 - TRIM_EPS) {
       steps.push({
         stepNumber: stepNum++,
         orientation: 'vertical',
-        x1: rightEdge, y1: 0, x2: rightEdge, y2: sheetH,
-        segments: [{ x1: rightEdge, y1: 0, x2: rightEdge, y2: sheetH }],
+        x1: rightEdge, y1: usable.y0, x2: rightEdge, y2: usable.y1,
+        segments: [{ x1: rightEdge, y1: usable.y0, x2: rightEdge, y2: usable.y1 }],
       });
     }
 
-    // Horizontal trim cut (rip to width) — only if waste exists below
-    if (bottomEdge < sheetH - EPS) {
+    // Horizontal cut (rip to width) — same rounding-tolerance rule as above.
+    if (bottomEdge < usable.y1 - TRIM_EPS) {
       steps.push({
         stepNumber: stepNum++,
         orientation: 'horizontal',
-        x1: 0, y1: bottomEdge, x2: sheetW, y2: bottomEdge,
-        segments: [{ x1: 0, y1: bottomEdge, x2: sheetW, y2: bottomEdge }],
+        x1: usable.x0, y1: bottomEdge, x2: usable.x1, y2: bottomEdge,
+        segments: [{ x1: usable.x0, y1: bottomEdge, x2: usable.x1, y2: bottomEdge }],
       });
     }
 
     return { steps, isApproximate: false };
   }
 
-  const POS_EPS = 0.05;   // straddle-check tolerance (≈ saw kerf)
+  // Straddle checking is pure geometry: "does this piece cross the cut line?"
+  // It must use a small rounding/display tolerance, NOT the blade width — scaling
+  // it to the kerf would let a piece that genuinely overlaps a candidate cut by
+  // less than a kerf read as clean, drawing a real cut through a part instead of
+  // flagging the sequence approximate. Both tolerances are unit-agnostic.
+  const POS_EPS = 0.05;   // straddle-check tolerance (rounding/display)
   const ALIGN_EPS = 0.25; // edge-alignment tolerance (~quarter inch)
 
   interface Region { x0: number; y0: number; x1: number; y1: number; }
@@ -305,8 +393,8 @@ export function deriveCutSequenceFromPlacements(
     return candidates[0];
   }
 
-  const steps: CutStep[] = [];
-  let stepNum = 1;
+  // Seed with the square-the-stock trim cuts; piece cuts continue numbering.
+  const steps: CutStep[] = [...trimSteps];
   let isApproximate = false;
 
   function planRegion(pieces: Placement[], region: Region): void {
@@ -414,7 +502,7 @@ export function deriveCutSequenceFromPlacements(
     }
   }
 
-  planRegion(placements, { x0: 0, y0: 0, x1: sheetW, y1: sheetH });
+  planRegion(placements, { x0: usable.x0, y0: usable.y0, x1: usable.x1, y1: usable.y1 });
   return { steps, isApproximate };
 }
 
@@ -468,8 +556,11 @@ export function reOptimizeAroundPinned(
     );
 
     for (const panel of sortedAnchored) {
-      const pw = panel.width + kerf;
-      const ph = panel.height + kerf;
+      // Fit against the RAW piece size — kerf is consumed only between adjacent
+      // pieces (subtracted below), never against a free-rect boundary. Matches
+      // the guillotine solver's edge accounting.
+      const pw = panel.width;
+      const ph = panel.height;
 
       // Score each free rect by distance from preferred center
       let bestIdx = -1;
@@ -481,12 +572,12 @@ export function reOptimizeAroundPinned(
         const cx = r.x + r.w / 2;
         const cy = r.y + r.h / 2;
 
-        if (r.w >= pw && r.h >= ph) {
+        if (r.w >= pw - FIT_EPS && r.h >= ph - FIT_EPS) {
           const score = dist2(cx, cy, panel.prefCX, panel.prefCY);
           if (score < bestScore) { bestScore = score; bestIdx = i; bestRotated = false; }
         }
         // Try rotated
-        if (r.w >= ph && r.h >= pw) {
+        if (r.w >= ph - FIT_EPS && r.h >= pw - FIT_EPS) {
           const score = dist2(cx, cy, panel.prefCX, panel.prefCY);
           if (score < bestScore) { bestScore = score; bestIdx = i; bestRotated = true; }
         }
@@ -515,7 +606,7 @@ export function reOptimizeAroundPinned(
         rotated: bestRotated ? !panel.rotated : panel.rotated,
       });
 
-      freeRects = subtractRect(freeRects, { x: clampedX, y: clampedY, w: placeW + kerf, h: placeH + kerf });
+      freeRects = reserveWithKerf(freeRects, clampedX, clampedY, placeW, placeH, kerf);
       freeRects = pruneContained(freeRects);
     }
 
@@ -523,8 +614,9 @@ export function reOptimizeAroundPinned(
     const sortedFloating = [...floating].sort((a, b) => b.width * b.height - a.width * a.height);
 
     for (const panel of sortedFloating) {
-      const pw = panel.width + kerf;
-      const ph = panel.height + kerf;
+      // Raw fit — see Pass 1. Kerf is reserved on subtraction, not on the check.
+      const pw = panel.width;
+      const ph = panel.height;
 
       let bestIdx = -1;
       let bestArea = Infinity;
@@ -532,11 +624,11 @@ export function reOptimizeAroundPinned(
 
       for (let i = 0; i < freeRects.length; i++) {
         const r = freeRects[i];
-        if (r.w >= pw && r.h >= ph) {
+        if (r.w >= pw - FIT_EPS && r.h >= ph - FIT_EPS) {
           const area = r.w * r.h;
           if (area < bestArea) { bestArea = area; bestIdx = i; bestRotated = false; }
         }
-        if (r.w >= ph && r.h >= pw) {
+        if (r.w >= ph - FIT_EPS && r.h >= pw - FIT_EPS) {
           const area = r.w * r.h;
           if (area < bestArea) { bestArea = area; bestIdx = i; bestRotated = true; }
         }
@@ -557,13 +649,18 @@ export function reOptimizeAroundPinned(
         rotated: bestRotated ? !panel.rotated : panel.rotated,
       });
 
-      freeRects = subtractRect(freeRects, { x: rect.x, y: rect.y, w: placeW + kerf, h: placeH + kerf });
+      freeRects = reserveWithKerf(freeRects, rect.x, rect.y, placeW, placeH, kerf);
       freeRects = pruneContained(freeRects);
     }
 
     // ── Derive fresh cut sequence from new placements ────────────────────────
     const { steps: cutSequence, isApproximate: cutSequenceApproximate } =
-      deriveCutSequenceFromPlacements(newPlacements, stockSheet.length, stockSheet.width);
+      deriveCutSequenceFromPlacements(newPlacements, stockSheet.length, stockSheet.width, {
+        left: stockSheet.trimLeft,
+        top: stockSheet.trimTop,
+        right: stockSheet.trimRight,
+        bottom: stockSheet.trimBottom,
+      });
 
     // Recalculate waste against usable area (excluding trim); reuse usableW/usableH from above
     const totalArea = usableW * usableH;

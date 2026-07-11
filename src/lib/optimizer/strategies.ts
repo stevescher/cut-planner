@@ -5,7 +5,7 @@ const SORTS: SortCriterion[] = [
   'perimeter-desc',
   'longest-side-desc',
   'width-desc',
-  'height-desc',
+  'length-desc',
 ];
 
 const SPLITS: SplitRule[] = [
@@ -36,19 +36,19 @@ export function generateStrategies(): PackingStrategy[] {
     ['perimeter-desc', 'shorter-axis', 'best-short-side-fit', true],
     ['perimeter-desc', 'longer-axis', 'worst-fit', true],
     ['width-desc', 'horizontal-first', 'best-short-side-fit', true],
-    ['height-desc', 'vertical-first', 'best-short-side-fit', true],
+    ['length-desc', 'vertical-first', 'best-short-side-fit', true],
     // No-rotation variants
     ['area-desc', 'shorter-axis', 'best-short-side-fit', false],
     ['area-desc', 'shorter-axis', 'best-area-fit', false],
     ['longest-side-desc', 'shorter-axis', 'best-short-side-fit', false],
     ['perimeter-desc', 'shorter-axis', 'best-area-fit', false],
     ['width-desc', 'vertical-first', 'best-area-fit', true],
-    ['height-desc', 'horizontal-first', 'best-area-fit', true],
+    ['length-desc', 'horizontal-first', 'best-area-fit', true],
     // Gang-cut friendly: no rotation + axis-first splits pack same-size parts
     // into shared rip strips (a woodworker rips once, then crosscuts the strip
     // into identical pieces). These keep identical panels in one orientation.
     ['width-desc', 'horizontal-first', 'best-short-side-fit', false],
-    ['height-desc', 'vertical-first', 'best-short-side-fit', false],
+    ['length-desc', 'vertical-first', 'best-short-side-fit', false],
     ['longest-side-desc', 'longer-axis', 'best-long-side-fit', false],
     ['area-desc', 'longer-axis', 'best-long-side-fit', false],
   ];
@@ -82,7 +82,7 @@ export function sortPanels(
         return Math.max(b.length, b.width) - Math.max(a.length, a.width);
       case 'width-desc':
         return b.width - a.width;
-      case 'height-desc':
+      case 'length-desc':
         return b.length - a.length;
     }
   });

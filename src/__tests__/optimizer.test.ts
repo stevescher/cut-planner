@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { solveAll } from '@/lib/optimizer/solver';
-import { StockSheet, Panel } from '@/lib/optimizer/types';
+import { reOptimizeAroundPinned } from '@/lib/optimizer/reoptimize';
+import { StockSheet, Panel, Solution } from '@/lib/optimizer/types';
 
 /** Build a stock sheet with sane defaults (no trim). */
 function sheet(partial: Partial<StockSheet> & { length: number; width: number }): StockSheet {
@@ -148,6 +149,77 @@ describe('kerf edge accounting (CRITICAL #1 regression)', () => {
   });
 });
 
+describe('trim / square-the-stock cuts', () => {
+  it('emits square-the-stock cuts before part cuts when the sheet has trim', () => {
+    const s = best({
+      stockSheets: [
+        sheet({ length: 96, width: 48, trimLeft: 1, trimTop: 1, trimRight: 1, trimBottom: 1 }),
+      ],
+      panels: [panel({ length: 20, width: 15, quantity: 4 })],
+      kerf: 0.125,
+    });
+    const sheetLayout = s.sheets[0];
+    // Trim cuts land on the usable-region boundaries (x=1, x=95, y=1, y=47).
+    const cutXs = sheetLayout.cutSequence
+      .filter((c) => c.orientation === 'vertical')
+      .map((c) => c.x1);
+    const cutYs = sheetLayout.cutSequence
+      .filter((c) => c.orientation === 'horizontal')
+      .map((c) => c.y1);
+    expect(cutXs).toContain(1);
+    expect(cutXs).toContain(95);
+    expect(cutYs).toContain(1);
+    expect(cutYs).toContain(47);
+    // Every placement sits inside the usable box.
+    for (const p of sheetLayout.placements) {
+      expect(p.x).toBeGreaterThanOrEqual(1 - 1e-6);
+      expect(p.y).toBeGreaterThanOrEqual(1 - 1e-6);
+      expect(p.x + p.width).toBeLessThanOrEqual(95 + 1e-6);
+      expect(p.y + p.height).toBeLessThanOrEqual(47 + 1e-6);
+    }
+  });
+
+  it('still emits trim cuts when the trim margin equals the kerf (1/8" trim, 1/8" kerf)', () => {
+    const s = best({
+      stockSheets: [
+        sheet({ length: 96, width: 48, trimLeft: 0.125, trimRight: 0.125, trimTop: 0.125, trimBottom: 0.125 }),
+      ],
+      panels: [panel({ length: 20, width: 15, quantity: 4 })],
+      kerf: 0.125,
+    });
+    const cuts = s.sheets[0].cutSequence;
+    // The four square-the-stock cuts must still be present at the usable edges.
+    expect(cuts.some((c) => c.orientation === 'vertical' && Math.abs(c.x1 - 0.125) < 1e-6)).toBe(true);
+    expect(cuts.some((c) => c.orientation === 'vertical' && Math.abs(c.x1 - 95.875) < 1e-6)).toBe(true);
+    expect(cuts.some((c) => c.orientation === 'horizontal' && Math.abs(c.y1 - 0.125) < 1e-6)).toBe(true);
+    expect(cuts.some((c) => c.orientation === 'horizontal' && Math.abs(c.y1 - 47.875) < 1e-6)).toBe(true);
+  });
+
+  it('emits a cut for a single panel whose offcut is smaller than the kerf', () => {
+    // 95.9" part on a 96" sheet, 1/8" kerf. Waste (0.1") < blade width, but the
+    // stock must still be cut down to 95.9" — the vertical cut must appear.
+    const s = best({
+      stockSheets: [sheet({ length: 96, width: 48 })],
+      panels: [panel({ length: 95.9, width: 48, quantity: 1 })],
+      kerf: 0.125,
+    });
+    const cuts = s.sheets[0].cutSequence;
+    expect(cuts.some((c) => c.orientation === 'vertical' && Math.abs(c.x1 - 95.9) < 1e-6)).toBe(true);
+  });
+
+  it('emits no trim cuts on a zero-trim sheet', () => {
+    const s = best({
+      stockSheets: [sheet({ length: 96, width: 48 })],
+      panels: [panel({ length: 20, width: 15, quantity: 3 })],
+      kerf: 0.125,
+    });
+    // With no trim, no cut should sit on the raw sheet edges (0 or full dim).
+    for (const c of s.sheets[0].cutSequence) {
+      expect(c.x1 === 0 && c.x2 === 0).toBe(false);
+    }
+  });
+});
+
 describe('edge cases', () => {
   it('reports a panel larger than every sheet as unplaced (no crash)', () => {
     const s = best({
@@ -188,5 +260,46 @@ describe('edge cases', () => {
     expect(p.rotated).toBe(false);
     expect(p.width).toBeCloseTo(40, 6);
     expect(p.height).toBeCloseTo(10, 6);
+  });
+});
+
+describe('reOptimizeAroundPinned kerf clearance', () => {
+  it('keeps a kerf gap between a pinned piece and re-packed neighbours', () => {
+    const kerf = 0.125;
+    // Two 10-wide parts that could tile a 20-wide sheet edge-to-edge. One is
+    // pinned; the other is re-packed. They must not end up flush (0 gap).
+    const solution: Solution = {
+      id: 'sol',
+      strategyName: 'test',
+      totalWaste: 0,
+      totalSheets: 1,
+      unplacedPanels: [],
+      sheets: [
+        {
+          stockSheetId: 's1',
+          sheetIndex: 0,
+          wastePercent: 0,
+          usedArea: 0,
+          cutSequence: [],
+          placements: [
+            { panelId: 'a', label: 'A', x: 10, y: 0, width: 10, height: 48, rotated: false, pinned: true, color: '#111' },
+            { panelId: 'b', label: 'B', x: 0, y: 0, width: 10, height: 48, rotated: false, pinned: false, color: '#222' },
+          ],
+        },
+      ],
+    };
+    const stock: StockSheet = sheet({ id: 's1', length: 20, width: 48 });
+    const out = reOptimizeAroundPinned(solution, [stock], new Set(['s1-0:0']), kerf);
+    const ps = out.sheets[0].placements;
+    // Any two horizontally-adjacent parts must be separated by at least the kerf.
+    for (let i = 0; i < ps.length; i++) {
+      for (let j = i + 1; j < ps.length; j++) {
+        const a = ps[i], b = ps[j];
+        const yOverlap = a.y < b.y + b.height - 1e-6 && a.y + a.height > b.y + 1e-6;
+        if (!yOverlap) continue;
+        const gap = a.x < b.x ? b.x - (a.x + a.width) : a.x - (b.x + b.width);
+        expect(gap).toBeGreaterThanOrEqual(kerf - 1e-6);
+      }
+    }
   });
 });

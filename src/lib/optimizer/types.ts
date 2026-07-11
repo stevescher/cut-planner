@@ -100,7 +100,7 @@ export type SortCriterion =
   | 'perimeter-desc'
   | 'longest-side-desc'
   | 'width-desc'
-  | 'height-desc';
+  | 'length-desc';
 
 export type SplitRule =
   | 'shorter-axis'

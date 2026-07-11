@@ -183,10 +183,18 @@ function solveWithStrategy(
   const sheetLayouts: SheetLayout[] = openSheets.map((os) => {
     const placements = collectPlacements(os.tree);
     const { steps: cutSequence, isApproximate: cutSequenceApproximate } =
-      deriveCutSequenceFromPlacements(placements, os.stockSheet.length, os.stockSheet.width);
+      deriveCutSequenceFromPlacements(placements, os.stockSheet.length, os.stockSheet.width, {
+        left: os.stockSheet.trimLeft,
+        top: os.stockSheet.trimTop,
+        right: os.stockSheet.trimRight,
+        bottom: os.stockSheet.trimBottom,
+      });
     const usableL = os.stockSheet.length - os.stockSheet.trimLeft - os.stockSheet.trimRight;
     const usableW = os.stockSheet.width - os.stockSheet.trimTop - os.stockSheet.trimBottom;
     const totalArea = usableL * usableW;
+    // Used area is the sum of finished part areas (raw, no kerf). Everything else
+    // in the usable sheet — offcuts AND the material turned to dust by the saw
+    // kerf — counts as waste. This is intentional: kerf is truly lost material.
     const usedArea = placements.reduce((sum, p) => sum + p.width * p.height, 0);
     const wastePercent = ((totalArea - usedArea) / totalArea) * 100;
 
