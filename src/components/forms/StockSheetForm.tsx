@@ -8,6 +8,9 @@ import { Button } from '@/components/ui/button';
 import { Plus, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 import { useState } from 'react';
 
+/** Matches the import validator's ceiling (src/lib/project-io.ts). */
+const MAX_DIMENSION = 10_000;
+
 export function StockSheetForm() {
   const { stockSheets, addStockSheet, updateStockSheet, removeStockSheet, units } =
     useProjectStore();
@@ -50,6 +53,8 @@ export function StockSheetForm() {
                 onChange={(v) => updateStockSheet(sheet.id, { length: v })}
                 placeholder={units === 'metric' ? '2440' : '96'}
                 units={units}
+                max={MAX_DIMENSION}
+                aria-label={`${sheet.label || `Sheet ${idx + 1}`} length`}
               />
             </div>
             <div>
@@ -59,15 +64,19 @@ export function StockSheetForm() {
                 onChange={(v) => updateStockSheet(sheet.id, { width: v })}
                 placeholder={units === 'metric' ? '1220' : '48'}
                 units={units}
+                max={MAX_DIMENSION}
+                aria-label={`${sheet.label || `Sheet ${idx + 1}`} width`}
               />
             </div>
             <div>
               <label className="field-label">Qty</label>
               <NumberInput
                 value={sheet.quantity}
-                onChange={(v) => updateStockSheet(sheet.id, { quantity: Math.max(1, Math.round(v)) })}
+                onChange={(v) => updateStockSheet(sheet.id, { quantity: Math.min(100, Math.max(1, Math.round(v))) })}
                 placeholder="1"
                 min={1}
+                max={100}
+                aria-label={`${sheet.label || `Sheet ${idx + 1}`} quantity`}
               />
             </div>
           </div>
@@ -96,6 +105,8 @@ export function StockSheetForm() {
                       onChange={(v) => updateStockSheet(sheet.id, { [side]: v })}
                       placeholder="0"
                       units={units}
+                      max={MAX_DIMENSION}
+                      aria-label={`${sheet.label || `Sheet ${idx + 1}`} ${side.replace('trim', '')} trim`}
                     />
                   </div>
                 ))}

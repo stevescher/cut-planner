@@ -53,11 +53,12 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
   const getSvgPoint = useCallback(
     (clientX: number, clientY: number) => {
       const svg = svgRef.current;
-      if (!svg) return { x: 0, y: 0 };
+      const ctm = svg?.getScreenCTM();
+      if (!svg || !ctm) return { x: 0, y: 0 };
       const pt = svg.createSVGPoint();
       pt.x = clientX;
       pt.y = clientY;
-      const svgPt = pt.matrixTransform(svg.getScreenCTM()!.inverse());
+      const svgPt = pt.matrixTransform(ctm.inverse());
       return { x: (svgPt.x - PADDING) / scale, y: (svgPt.y - PADDING) / scale };
     },
     [scale]
@@ -321,6 +322,9 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
         height={svgH}
         viewBox={`0 0 ${svgW} ${svgH}`}
         className="rounded-xl border border-slate-200 bg-white select-none shadow-sm"
+        // Stop the browser from scrolling/panning the page when a drag starts on
+        // a touch device, so panels can actually be dragged on a shop tablet.
+        style={{ touchAction: 'none' }}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
       >

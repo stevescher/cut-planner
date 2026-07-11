@@ -24,7 +24,15 @@ export default function Home() {
 
   // Undo/redo keyboard shortcuts
   useEffect(() => {
+    const isEditableTarget = (t: EventTarget | null): boolean => {
+      const el = t as HTMLElement | null;
+      if (!el) return false;
+      const tag = el.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable;
+    };
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't hijack the browser's native text undo while editing a field.
+      if (isEditableTarget(e.target)) return;
       if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
         const entry = useHistoryStore.getState().undo();

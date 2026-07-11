@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { Solution } from '@/lib/optimizer/types';
+import { useChecklistStore } from './useChecklistStore';
 
 interface LayoutState {
   solutions: Solution[];
@@ -21,12 +22,15 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
   isOptimizing: false,
   revealedCount: 3,
 
-  setSolutions: (solutions) =>
+  setSolutions: (solutions) => {
+    // A fresh plan invalidates any checked-off pieces from the previous one.
+    useChecklistStore.getState().reset();
     set({
       solutions,
       activeSolutionIndex: 0,
       revealedCount: Math.min(3, solutions.length),
-    }),
+    });
+  },
 
   setActive: (index) => set({ activeSolutionIndex: index }),
   setOptimizing: (optimizing) => set({ isOptimizing: optimizing }),
@@ -38,11 +42,13 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
     }
   },
 
-  reset: () =>
+  reset: () => {
+    useChecklistStore.getState().reset();
     set({
       solutions: [],
       activeSolutionIndex: 0,
       isOptimizing: false,
       revealedCount: 3,
-    }),
+    });
+  },
 }));

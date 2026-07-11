@@ -4,11 +4,18 @@ import { useProjectStore } from '@/store/useProjectStore';
 import { Units, defaultKerf } from '@/lib/fractions';
 
 export function UnitToggle() {
-  const { units, setUnits, setKerf } = useProjectStore();
+  const { units, kerf, setUnits, setKerf } = useProjectStore();
 
   const handleChange = (newUnits: Units) => {
+    if (newUnits === units) return;
+    // Kerf is stored in inches, so it carries across unit systems unchanged.
+    // Only swap to the new system's default kerf when the user hasn't set a
+    // custom one (i.e. it still equals the old system's default) — otherwise a
+    // deliberately-chosen blade width would be silently discarded.
+    if (Math.abs(kerf - defaultKerf(units)) < 1e-6) {
+      setKerf(defaultKerf(newUnits));
+    }
     setUnits(newUnits);
-    setKerf(defaultKerf(newUnits));
   };
 
   return (
@@ -26,7 +33,8 @@ export function UnitToggle() {
                 : 'text-slate-500 hover:text-slate-700',
             ].join(' ')}
           >
-            {u === 'imperial' ? 'Imperial  in' : 'Metric  mm'}
+            {u === 'imperial' ? 'Imperial' : 'Metric'}
+            <span className="ml-1 opacity-60">{u === 'imperial' ? 'in' : 'mm'}</span>
           </button>
         ))}
       </div>

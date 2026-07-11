@@ -8,6 +8,9 @@ import { Plus, Trash2, Lock, Unlock, Upload } from 'lucide-react';
 import { getColor } from '@/lib/colors';
 import { PanelImport } from './PanelImport';
 
+/** Matches the import validator's ceiling (src/lib/project-io.ts). */
+const MAX_DIMENSION = 10_000;
+
 export function PanelForm() {
   const { panels, addPanel, updatePanel, removePanel, units } = useProjectStore();
   const [showImport, setShowImport] = useState(false);
@@ -54,6 +57,8 @@ export function PanelForm() {
               onChange={(v) => updatePanel(panel.id, { length: v })}
               placeholder={units === 'metric' ? '600' : '24'}
               units={units}
+              max={MAX_DIMENSION}
+              aria-label={`${panel.label || `Panel ${idx + 1}`} length`}
               className="h-8 text-sm"
             />
             <NumberInput
@@ -61,13 +66,17 @@ export function PanelForm() {
               onChange={(v) => updatePanel(panel.id, { width: v })}
               placeholder={units === 'metric' ? '300' : '12'}
               units={units}
+              max={MAX_DIMENSION}
+              aria-label={`${panel.label || `Panel ${idx + 1}`} width`}
               className="h-8 text-sm"
             />
             <NumberInput
               value={panel.quantity}
-              onChange={(v) => updatePanel(panel.id, { quantity: Math.max(1, Math.round(v)) })}
+              onChange={(v) => updatePanel(panel.id, { quantity: Math.min(100, Math.max(1, Math.round(v))) })}
               placeholder="1"
               min={1}
+              max={100}
+              aria-label={`${panel.label || `Panel ${idx + 1}`} quantity`}
               className="h-8 text-sm"
             />
             {/* Lock rotation toggle */}

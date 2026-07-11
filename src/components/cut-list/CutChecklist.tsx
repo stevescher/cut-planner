@@ -3,6 +3,7 @@
 import { Solution, StockSheet } from '@/lib/optimizer/types';
 import { formatDisplay, unitSuffix } from '@/lib/fractions';
 import { useProjectStore } from '@/store/useProjectStore';
+import { useChecklistStore } from '@/store/useChecklistStore';
 
 interface CutChecklistProps {
   solution: Solution;
@@ -11,6 +12,8 @@ interface CutChecklistProps {
 
 export function CutChecklist({ solution, stockSheets }: CutChecklistProps) {
   const units = useProjectStore((s) => s.units);
+  const checked = useChecklistStore((s) => s.checked);
+  const toggle = useChecklistStore((s) => s.toggle);
   const suffix = unitSuffix(units);
   return (
     <div className="p-6 space-y-6 print:p-0">
@@ -53,26 +56,38 @@ export function CutChecklist({ solution, stockSheets }: CutChecklistProps) {
                 </tr>
               </thead>
               <tbody>
-                {sheet.placements.map((p, pi) => (
-                  <tr key={pi} className="border-b border-muted/50">
-                    <td className="py-1.5">
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4 rounded border-gray-300"
-                      />
-                    </td>
-                    <td className="py-1.5 font-medium">{p.label}</td>
-                    <td className="py-1.5">
-                      {formatDisplay(p.width, units)}{suffix}
-                    </td>
-                    <td className="py-1.5">
-                      {formatDisplay(p.height, units)}{suffix}
-                    </td>
-                    <td className="py-1.5 text-muted-foreground">
-                      {p.rotated ? 'Yes' : '—'}
-                    </td>
-                  </tr>
-                ))}
+                {sheet.placements.map((p, pi) => {
+                  // Include solution.id so checks don't bleed across layout
+                  // alternatives that reuse the same sheet id / index / position.
+                  const key = `${solution.id}:${sheet.stockSheetId}-${sheet.sheetIndex}:${pi}`;
+                  const isChecked = !!checked[key];
+                  const label = `${p.label} ${formatDisplay(p.width, units)}${suffix} by ${formatDisplay(p.height, units)}${suffix}${p.rotated ? ', rotated' : ''}`;
+                  return (
+                    <tr key={pi} className="border-b border-muted/50">
+                      <td className="py-1.5">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => toggle(key)}
+                          aria-label={`Mark ${label} as cut`}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                      </td>
+                      <td className={`py-1.5 font-medium ${isChecked ? 'line-through text-muted-foreground' : ''}`}>
+                        {p.label}
+                      </td>
+                      <td className="py-1.5">
+                        {formatDisplay(p.width, units)}{suffix}
+                      </td>
+                      <td className="py-1.5">
+                        {formatDisplay(p.height, units)}{suffix}
+                      </td>
+                      <td className="py-1.5 text-muted-foreground">
+                        {p.rotated ? 'Yes' : '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
