@@ -1,4 +1,5 @@
 import { ProjectData } from './optimizer/types';
+import { safeFilename } from './safe-export';
 
 const STORAGE_KEY = 'cut-planner-project';
 
@@ -106,7 +107,7 @@ export function exportProjectToFile(data: ProjectData): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${data.name || 'cut-planner-project'}.json`;
+  a.download = `${safeFilename(data.name, 'cut-planner-project')}.json`;
   a.click();
   URL.revokeObjectURL(url);
 }

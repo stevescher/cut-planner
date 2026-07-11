@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf';
 import { Solution, StockSheet, Panel } from '@/lib/optimizer/types';
 import { formatDisplay, unitSuffix, Units } from '@/lib/fractions';
+import { safeFilename } from '@/lib/safe-export';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -317,5 +318,5 @@ export async function exportSolutionAsPdf(
     );
   }
 
-  pdf.save(`${projectName || 'cut-planner'}.pdf`);
+  pdf.save(`${safeFilename(projectName, 'cut-planner')}.pdf`);
 }

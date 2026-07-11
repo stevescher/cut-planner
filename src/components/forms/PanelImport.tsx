@@ -5,6 +5,7 @@ import { Upload, Download, X, AlertCircle, Check } from 'lucide-react';
 import { useProjectStore } from '@/store/useProjectStore';
 import { parseInput } from '@/lib/fractions';
 import { Panel } from '@/lib/optimizer/types';
+import { csvRow } from '@/lib/safe-export';
 import { nanoid } from 'nanoid';
 
 interface ParsedRow {
@@ -127,10 +128,10 @@ function downloadTemplate(units: 'imperial' | 'metric') {
   const dim3 = units === 'metric' ? '400' : '16';
   const dim4 = units === 'metric' ? '200' : '8';
   const content = [
-    'label,length,width,qty',
-    `"Side Panel",${dim1},${dim2},2`,
-    `"Shelf",${dim3},${dim4},4`,
-    `"Top",${dim1},${dim4},1`,
+    csvRow(['label', 'length', 'width', 'qty']),
+    csvRow(['Side Panel', dim1, dim2, 2]),
+    csvRow(['Shelf', dim3, dim4, 4]),
+    csvRow(['Top', dim1, dim4, 1]),
   ].join('\n');
   const blob = new Blob([content], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);

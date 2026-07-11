@@ -4,6 +4,7 @@ import { useLayoutStore } from '@/store/useLayoutStore';
 import { useProjectStore } from '@/store/useProjectStore';
 import { exportSolutionAsPdf } from '@/lib/export/pdf';
 import { exportElementAsPng } from '@/lib/export/image';
+import { safeFilename } from '@/lib/safe-export';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -28,7 +29,7 @@ export function ExportMenu() {
     // Find the layout viewer main content area
     const layoutArea = document.querySelector('[data-export-target]') as HTMLElement;
     if (layoutArea) {
-      await exportElementAsPng(layoutArea, `${projectName || 'cut-planner'}.png`);
+      await exportElementAsPng(layoutArea, `${safeFilename(projectName, 'cut-planner')}.png`);
     }
   };
 
