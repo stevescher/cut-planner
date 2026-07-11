@@ -5,6 +5,14 @@ import {
   SelectionRule,
 } from './types';
 
+/**
+ * Tolerance for fit comparisons (inches). Absorbs floating-point drift from
+ * metric conversions (mm ÷ 25.4) so an exact-fit part isn't rejected by a
+ * sub-thousandth-inch rounding error. Exported so the sheet-admission gate in
+ * the solver applies the identical tolerance the tree placement uses.
+ */
+export const FIT_EPS = 1e-6;
+
 /** Create a fresh guillotine tree for a sheet with given usable dimensions */
 export function createTree(width: number, height: number): GuillotineNode {
   return {
@@ -40,7 +48,12 @@ function collectFreeRects(node: GuillotineNode): FreeRect[] {
   return [];
 }
 
-/** Score a free rectangle for a given piece size (lower is better, -1 = doesn't fit) */
+/**
+ * Score a free rectangle for a given piece size (lower is better, -1 = doesn't fit).
+ * pieceW/pieceH are the RAW piece dimensions (without kerf). A piece fits when its
+ * raw size fits the free rect — kerf is only consumed between adjacent pieces
+ * (handled at split time), never against the sheet/free-rect boundary.
+ */
 function scoreFit(
   freeW: number,
   freeH: number,
@@ -48,7 +61,7 @@ function scoreFit(
   pieceH: number,
   rule: SelectionRule
 ): number {
-  if (freeW < pieceW || freeH < pieceH) return -1;
+  if (freeW < pieceW - FIT_EPS || freeH < pieceH - FIT_EPS) return -1;
 
   const leftoverW = freeW - pieceW;
   const leftoverH = freeH - pieceH;
@@ -92,17 +105,21 @@ function chooseSplit(
  * Try to place a piece into the guillotine tree.
  * Returns the placement coordinates if successful, or null.
  *
- * @param pieceW - width of piece including kerf
- * @param pieceH - height of piece including kerf
- * @param actualW - actual width (without kerf, for the placement record)
- * @param actualH - actual height (without kerf, for the placement record)
+ * Kerf (saw blade width) is material lost *between* two cuts. It is charged only
+ * on the remainder side of a split — i.e. the neighbour region starts `kerf` past
+ * the piece edge — and never against the sheet boundary. When the remaining space
+ * on a side is ≤ kerf there is no room for a neighbouring piece there, so no kerf
+ * is consumed and the region collapses to zero.
+ *
+ * @param pieceW - raw width of the piece (without kerf)
+ * @param pieceH - raw height of the piece (without kerf)
+ * @param kerf   - saw blade width, reserved only between adjacent pieces
  */
 export function placeInTree(
   tree: GuillotineNode,
   pieceW: number,
   pieceH: number,
-  actualW: number,
-  actualH: number,
+  kerf: number,
   selectionRule: SelectionRule,
   splitRule: SplitRule,
   allowRotation: boolean,
@@ -115,8 +132,6 @@ export function placeInTree(
   let bestRotated = false;
   let bestPW = pieceW;
   let bestPH = pieceH;
-  let bestAW = actualW;
-  let bestAH = actualH;
 
   for (const rect of freeRects) {
     // Try normal orientation
@@ -127,12 +142,10 @@ export function placeInTree(
       bestRotated = false;
       bestPW = pieceW;
       bestPH = pieceH;
-      bestAW = actualW;
-      bestAH = actualH;
     }
 
     // Try rotated
-    if (allowRotation && pieceW !== pieceH) {
+    if (allowRotation && Math.abs(pieceW - pieceH) > FIT_EPS) {
       const scoreR = scoreFit(rect.width, rect.height, pieceH, pieceW, selectionRule);
       if (scoreR !== -1 && scoreR < bestScore) {
         bestScore = scoreR;
@@ -140,8 +153,6 @@ export function placeInTree(
         bestRotated = true;
         bestPW = pieceH;
         bestPH = pieceW;
-        bestAW = actualH;
-        bestAH = actualW;
       }
     }
   }
@@ -156,23 +167,33 @@ export function placeInTree(
     splitRule
   );
 
-  // Split the node
   const placement: Placement = {
     panelId: placementInfo.panelId,
     label: placementInfo.label,
     x: bestNode.x,
     y: bestNode.y,
-    width: bestAW,
-    height: bestAH,
+    width: bestPW,
+    height: bestPH,
     rotated: bestRotated,
     pinned: false,
     color: placementInfo.color,
   };
 
+  // Remaining space on each axis after the piece. A neighbour only exists (and a
+  // kerf is only consumed) when the remainder exceeds the kerf itself; otherwise
+  // the piece runs to the boundary and the region collapses to zero width/height.
+  const remainW = bestNode.width - bestPW;
+  const remainH = bestNode.height - bestPH;
+  const rightW = remainW > kerf + FIT_EPS ? remainW - kerf : 0;
+  const bottomH = remainH > kerf + FIT_EPS ? remainH - kerf : 0;
+  // Offset of the neighbour region = piece + kerf, but clamped so a piece flush
+  // against the boundary (no room for a kerf) sits at the piece edge.
+  const rightOffset = rightW > 0 ? bestPW + kerf : bestPW;
+  const bottomOffset = bottomH > 0 ? bestPH + kerf : bestPH;
+
   if (splitDir === 'horizontal') {
-    // Split horizontally: piece goes top-left
-    // Right child: to the right of the piece, same height as piece
-    // Bottom child: below the piece, full width
+    // Split horizontally: piece top-left, right remainder same height as piece,
+    // bottom remainder full width.
     bestNode.split = 'horizontal';
     bestNode.placement = null;
 
@@ -186,15 +207,10 @@ export function placeInTree(
       children: null,
     };
 
-    // We need to split this into: the placed piece + right remainder + bottom remainder
-    // Using a two-level split for guillotine correctness:
-    // First split: horizontal at piece bottom → top strip + bottom strip
-    // Second split: vertical at piece right in top strip
-
     const topRight: GuillotineNode = {
-      x: bestNode.x + bestPW,
+      x: bestNode.x + rightOffset,
       y: bestNode.y,
-      width: bestNode.width - bestPW,
+      width: rightW,
       height: bestPH,
       split: null,
       placement: null,
@@ -213,9 +229,9 @@ export function placeInTree(
 
     const bottomStrip: GuillotineNode = {
       x: bestNode.x,
-      y: bestNode.y + bestPH,
+      y: bestNode.y + bottomOffset,
       width: bestNode.width,
-      height: bestNode.height - bestPH,
+      height: bottomH,
       split: null,
       placement: null,
       children: null,
@@ -223,10 +239,8 @@ export function placeInTree(
 
     bestNode.children = [topStrip, bottomStrip];
   } else {
-    // Split vertically: piece goes top-left
-    // Bottom child: below piece, same width as piece
-    // Right child: to the right, full height
-
+    // Split vertically: piece top-left, bottom remainder same width as piece,
+    // right remainder full height.
     const topLeft: GuillotineNode = {
       x: bestNode.x,
       y: bestNode.y,
@@ -239,9 +253,9 @@ export function placeInTree(
 
     const bottomLeft: GuillotineNode = {
       x: bestNode.x,
-      y: bestNode.y + bestPH,
+      y: bestNode.y + bottomOffset,
       width: bestPW,
-      height: bestNode.height - bestPH,
+      height: bottomH,
       split: null,
       placement: null,
       children: null,
@@ -258,9 +272,9 @@ export function placeInTree(
     };
 
     const rightStrip: GuillotineNode = {
-      x: bestNode.x + bestPW,
+      x: bestNode.x + rightOffset,
       y: bestNode.y,
-      width: bestNode.width - bestPW,
+      width: rightW,
       height: bestNode.height,
       split: null,
       placement: null,

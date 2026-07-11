@@ -8,7 +8,7 @@ import {
   Placement,
   GuillotineNode,
 } from './types';
-import { createTree, placeInTree, collectPlacements } from './guillotine';
+import { createTree, placeInTree, collectPlacements, FIT_EPS } from './guillotine';
 import { deriveCutSequenceFromPlacements } from './reoptimize';
 import { generateStrategies, sortPanels } from './strategies';
 import { getColor } from '../colors';
@@ -90,11 +90,14 @@ function solveWithStrategy(
       const currentUsage = sheetUsage.get(ss.id) || 0;
       if (currentUsage >= ss.quantity) continue;
 
+      // Use the same tolerance the tree placement uses, so a piece the tree
+      // would accept (e.g. an exact metric fit off by float drift) also opens
+      // a sheet instead of being reported unplaced.
       const fits =
-        (usable.length >= minLength && usable.width >= minWidth) ||
+        (usable.length >= minLength - FIT_EPS && usable.width >= minWidth - FIT_EPS) ||
         (canRotate &&
-          usable.length >= minWidth &&
-          usable.width >= minLength);
+          usable.length >= minWidth - FIT_EPS &&
+          usable.width >= minLength - FIT_EPS);
 
       if (fits) {
         sheetUsage.set(ss.id, currentUsage + 1);
@@ -118,8 +121,8 @@ function solveWithStrategy(
   // Place each panel
   for (const sortedItem of sorted) {
     const panel = expanded[sortedItem.index];
-    const pieceW = panel.length + kerf;
-    const pieceH = panel.width + kerf;
+    const pieceW = panel.length;
+    const pieceH = panel.width;
     const color = getColor(panel.originalIndex);
     let placed = false;
 
@@ -132,8 +135,7 @@ function solveWithStrategy(
         os.tree,
         pieceW,
         pieceH,
-        panel.length,
-        panel.width,
+        kerf,
         strategy.selectionRule,
         strategy.splitRule,
         allowRotation,
@@ -153,8 +155,7 @@ function solveWithStrategy(
           newSheet.tree,
           pieceW,
           pieceH,
-          panel.length,
-          panel.width,
+          kerf,
           strategy.selectionRule,
           strategy.splitRule,
           allowRotation,
