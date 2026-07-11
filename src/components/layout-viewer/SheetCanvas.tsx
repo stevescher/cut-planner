@@ -214,8 +214,33 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
               const newW = pl.height;
               const newH = pl.width;
               // Keep same center, clamped to sheet bounds
-              const newX = Math.max(0, Math.min(pl.x + (pl.width - newW) / 2, sheetW - newW));
-              const newY = Math.max(0, Math.min(pl.y + (pl.height - newH) / 2, sheetH - newH));
+              const centeredX = Math.max(0, Math.min(pl.x + (pl.width - newW) / 2, sheetW - newW));
+              const centeredY = Math.max(0, Math.min(pl.y + (pl.height - newH) / 2, sheetH - newH));
+
+              // Re-snap the rotated piece to trim edges / neighbor edges so it trues up
+              const threshold = 8 / scale;
+              const others = sheet.placements.filter((_, oi) => oi !== placementIndex);
+              const xCandidates = [
+                stockSheet.trimLeft,
+                sheetW - stockSheet.trimRight - newW,
+                ...others.flatMap((o) => [o.x, o.x + o.width, o.x - newW, o.x + o.width - newW]),
+              ];
+              const yCandidates = [
+                stockSheet.trimTop,
+                sheetH - stockSheet.trimBottom - newH,
+                ...others.flatMap((o) => [o.y, o.y + o.height, o.y - newH, o.y + o.height - newH]),
+              ];
+              let snapX = centeredX;
+              let snapY = centeredY;
+              for (const cx of xCandidates) {
+                if (Math.abs(centeredX - cx) <= threshold) { snapX = cx; break; }
+              }
+              for (const cy of yCandidates) {
+                if (Math.abs(centeredY - cy) <= threshold) { snapY = cy; break; }
+              }
+              const newX = Math.max(stockSheet.trimLeft, Math.min(snapX, sheetW - stockSheet.trimRight - newW));
+              const newY = Math.max(stockSheet.trimTop, Math.min(snapY, sheetH - stockSheet.trimBottom - newH));
+
               return { ...pl, x: newX, y: newY, width: newW, height: newH, rotated: !pl.rotated };
             });
 
@@ -238,7 +263,7 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
         togglePin(sheetKey, placementIndex);
       }
     },
-    [sheetLayout, stockSheet.id, sheetKey, sheetW, sheetH, isPinned, togglePin]
+    [sheetLayout, stockSheet, sheetKey, sheetW, sheetH, scale, isPinned, togglePin]
   );
 
   // ── Rendering ──────────────────────────────────────────────────────────────

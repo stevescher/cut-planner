@@ -222,7 +222,37 @@ function solveWithStrategy(
   };
 }
 
-/** Run all strategies and return solutions sorted by waste (best first) */
+/** Total number of saw cuts across every sheet in a solution (fewer is better) */
+function countCuts(solution: Solution): number {
+  return solution.sheets.reduce((sum, sh) => sum + sh.cutSequence.length, 0);
+}
+
+/**
+ * Count how many placed pieces sit against their panel group's minority
+ * orientation. Identical parts cut in the same orientation can be gang-cut
+ * (one rip, then crosscut), so a layout that keeps a group consistent scores 0.
+ * Each off-orientation piece adds 1.
+ */
+function orientationInconsistency(solution: Solution): number {
+  // Tally rotated vs. un-rotated per panelId across all sheets.
+  const groups = new Map<string, { rot: number; norm: number }>();
+  for (const sheet of solution.sheets) {
+    for (const p of sheet.placements) {
+      const g = groups.get(p.panelId) ?? { rot: 0, norm: 0 };
+      if (p.rotated) g.rot++;
+      else g.norm++;
+      groups.set(p.panelId, g);
+    }
+  }
+  let penalty = 0;
+  for (const { rot, norm } of groups.values()) {
+    // Minority count = pieces that break the group's dominant orientation.
+    penalty += Math.min(rot, norm);
+  }
+  return penalty;
+}
+
+/** Run all strategies and return solutions sorted by cut-friendliness (best first) */
 export function solveAll(config: {
   stockSheets: StockSheet[];
   panels: Panel[];
@@ -245,11 +275,45 @@ export function solveAll(config: {
     }
   }
 
-  // Sort by: fewer sheets first, then less waste
-  solutions.sort((a, b) => {
-    if (a.totalSheets !== b.totalSheets) return a.totalSheets - b.totalSheets;
-    return a.totalWaste - b.totalWaste;
+  // Sort by cut-friendliness, not just waste. A woodworker prefers a layout
+  // that (1) uses the fewest sheets, then (2) keeps identical parts in the same
+  // orientation so they can be gang-cut (rip once, crosscut into identical
+  // pieces), then (3) wastes little, then (4) needs fewer saw cuts.
+  //
+  // Sheet count is the hard cost — it's what you actually pay for — so it stays
+  // first. But once sheet count is equal, a clean same-orientation plan beats a
+  // lower-waste one: the extra offcut is scrap you were keeping anyway, whereas
+  // an inconsistent orientation forces a separate saw setup and risks grain
+  // mismatch on parts that are supposed to be identical.
+  const scored = solutions.map((s) => ({
+    solution: s,
+    unplaced: s.unplacedPanels.reduce((sum, p) => sum + p.quantity, 0),
+    totalCuts: countCuts(s),
+    orientationPenalty: orientationInconsistency(s),
+    // Round waste to whole percent so a 0.3% waste win doesn't reorder plans
+    // that are practically equivalent on material.
+    wasteBucket: Math.round(s.totalWaste),
+  }));
+
+  scored.sort((a, b) => {
+    // A layout that drops panels is never acceptable if a complete one exists —
+    // completeness comes before every quality signal, including sheet count and
+    // orientation. (A no-rotation strategy can leave a part unplaced yet score a
+    // perfect orientation penalty of 0; without this it could outrank a full
+    // layout.)
+    if (a.unplaced !== b.unplaced) return a.unplaced - b.unplaced;
+    if (a.solution.totalSheets !== b.solution.totalSheets)
+      return a.solution.totalSheets - b.solution.totalSheets;
+    if (a.orientationPenalty !== b.orientationPenalty)
+      return a.orientationPenalty - b.orientationPenalty;
+    if (a.wasteBucket !== b.wasteBucket) return a.wasteBucket - b.wasteBucket;
+    if (a.totalCuts !== b.totalCuts) return a.totalCuts - b.totalCuts;
+    // Final tie-break: exact waste.
+    return a.solution.totalWaste - b.solution.totalWaste;
   });
+
+  solutions.length = 0;
+  solutions.push(...scored.map((x) => x.solution));
 
   // Deduplicate solutions that produce identical layouts
   const unique: Solution[] = [];

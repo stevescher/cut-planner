@@ -14,9 +14,8 @@ export function PanelForm() {
 
   return (
     <div className="space-y-1.5">
-      {/* Column headers */}
-      <div className="grid grid-cols-[8px_1fr_72px_72px_46px_24px_24px] gap-2 px-1 pb-0.5">
-        <span />
+      {/* Column headers (align with the dimension row below the label) */}
+      <div className="grid grid-cols-[minmax(0,1fr)_64px_64px_40px_24px_24px] gap-2 px-2 pb-0.5">
         <span className="field-label">Label</span>
         <span className="field-label">Length</span>
         <span className="field-label">Width</span>
@@ -30,21 +29,26 @@ export function PanelForm() {
         {panels.map((panel, idx) => (
           <div
             key={panel.id}
-            className="grid grid-cols-[8px_1fr_72px_72px_46px_24px_24px] gap-2 items-center
-                       bg-white rounded-lg border border-slate-200 px-2 py-1.5
+            className="bg-white rounded-lg border border-slate-200 px-2 py-1.5
                        hover:border-indigo-200 transition-colors"
           >
-            {/* Color swatch */}
-            <span
-              className="w-2 h-2 rounded-sm shrink-0"
-              style={{ backgroundColor: getColor(idx) }}
-            />
-            <Input
-              value={panel.label}
-              onChange={(e) => updatePanel(panel.id, { label: e.target.value })}
-              placeholder={`Panel ${idx + 1}`}
-              className="h-8 text-sm border-0 p-0 shadow-none focus-visible:ring-0 bg-transparent"
-            />
+            {/* Label — full width so long names aren't clipped */}
+            <div className="flex items-center gap-2">
+              <span
+                className="w-2 h-2 rounded-sm shrink-0"
+                style={{ backgroundColor: getColor(idx) }}
+              />
+              <Input
+                value={panel.label}
+                onChange={(e) => updatePanel(panel.id, { label: e.target.value })}
+                placeholder={`Panel ${idx + 1}`}
+                className="h-7 text-sm border-0 p-0 shadow-none focus-visible:ring-0 bg-transparent"
+              />
+            </div>
+
+            {/* Dimensions + controls row */}
+            <div className="grid grid-cols-[minmax(0,1fr)_64px_64px_40px_24px_24px] gap-2 items-center">
+            <span />
             <NumberInput
               value={panel.length}
               onChange={(v) => updatePanel(panel.id, { length: v })}
@@ -88,6 +92,7 @@ export function PanelForm() {
             >
               <Trash2 className="h-3 w-3" />
             </button>
+            </div>
           </div>
         ))}
       </div>
