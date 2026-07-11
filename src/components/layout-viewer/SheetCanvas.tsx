@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useId, useRef, useState } from 'react';
 import { SheetLayout, StockSheet } from '@/lib/optimizer/types';
 import { useViewStore } from '@/store/useViewStore';
 import { useDragStore } from '@/store/useDragStore';
@@ -25,6 +25,10 @@ const DEFAULT_MAX_WIDTH = 800;
 
 export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, onExpand }: SheetCanvasProps) {
   const MAX_WIDTH = maxWidth ?? DEFAULT_MAX_WIDTH;
+  // Unique per component instance so the thumbnail and lightbox canvases (same
+  // sheetKey, different scale) don't collide on clipPath ids. Strip colons —
+  // React's useId output contains them and they're unsafe in url(#id) refs.
+  const uid = useId().replace(/:/g, '');
   const { showLabels, viewMode, showCutSequence, showEdgeDims, zoom } = useViewStore();
   const { units, panels } = useProjectStore();
   const fmt = (v: number) => formatDisplay(v, units);
@@ -321,6 +325,8 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
         width={svgW}
         height={svgH}
         viewBox={`0 0 ${svgW} ${svgH}`}
+        role="img"
+        aria-label={`Cutting diagram for sheet ${sheetNumber}${stockSheet.label ? ` (${stockSheet.label})` : ''}: ${fmt(sheetW)}${sfx} by ${fmt(sheetH)}${sfx}, ${sheetLayout.placements.length} pieces, ${sheetLayout.wastePercent.toFixed(0)}% waste. The Shop List tab lists every piece in an accessible table.`}
         className="rounded-xl border border-slate-200 bg-white select-none shadow-sm"
         // Stop the browser from scrolling/panning the page when a drag starts on
         // a touch device, so panels can actually be dragged on a shop tablet.
@@ -470,38 +476,51 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
                 </g>
               )}
 
-              {/* Cut-list index badge — top-left corner */}
-              {pw >= 18 && ph >= 16 && (
+              {/* Cut-list index badge — top-left corner. Always shown on any
+                  piece big enough to hold a digit so it stays legible for
+                  colorblind users (color is not the only cue). */}
+              {pw >= 11 && ph >= 11 && (
                 <text
                   x={px + 5} y={py + 5}
                   textAnchor="start" dominantBaseline="hanging"
-                  fill={outlineMode ? '#475569' : 'rgba(255,255,255,0.65)'}
+                  fill={outlineMode ? '#475569' : 'rgba(255,255,255,0.8)'}
                   fontSize={8} fontWeight="700"
+                  aria-hidden
                   style={{ pointerEvents: 'none', userSelect: 'none' }}
                 >
                   {i + 1}
                 </text>
               )}
 
-              {/* Labels */}
+              {/* Labels — clipped to the piece so long names don't overflow.
+                  The dimensions line is suppressed when edge dims are shown, to
+                  avoid printing the same measurement twice. */}
               {showLabels && pw > 36 && ph > 24 && (
                 <>
+                  <clipPath id={`label-clip-${uid}-${i}`}>
+                    <rect x={px + 2} y={py} width={Math.max(0, pw - 4)} height={ph} />
+                  </clipPath>
                   <text
-                    x={px + pw / 2} y={py + ph / 2 - 6}
+                    x={px + pw / 2} y={py + ph / 2 - (showEdgeDims ? 0 : 6)}
                     textAnchor="middle" dominantBaseline="middle"
                     fill={labelFill} fontSize={11} fontWeight="600"
+                    clipPath={`url(#label-clip-${uid}-${i})`}
+                    aria-hidden
                     style={{ pointerEvents: 'none', userSelect: 'none' }}
                   >
                     {p.label || `Panel ${i + 1}`}
                   </text>
-                  <text
-                    x={px + pw / 2} y={py + ph / 2 + 8}
-                    textAnchor="middle" dominantBaseline="middle"
-                    fill={dimFill} fontSize={9}
-                    style={{ pointerEvents: 'none', userSelect: 'none' }}
-                  >
-                    {fmt(p.width)}{sfx} &times; {fmt(p.height)}{sfx}
-                  </text>
+                  {!showEdgeDims && (
+                    <text
+                      x={px + pw / 2} y={py + ph / 2 + 8}
+                      textAnchor="middle" dominantBaseline="middle"
+                      fill={dimFill} fontSize={9}
+                      aria-hidden
+                      style={{ pointerEvents: 'none', userSelect: 'none' }}
+                    >
+                      {fmt(p.width)}{sfx} &times; {fmt(p.height)}{sfx}
+                    </text>
+                  )}
                 </>
               )}
 
@@ -593,6 +612,7 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
           <button
             onClick={onExpand}
             title="Expand to full view"
+            aria-label="Expand sheet to full view"
             className="absolute flex items-center justify-center rounded-md
                        bg-white hover:bg-slate-50 text-slate-400 hover:text-slate-700
                        shadow-sm border border-slate-200 transition-all"

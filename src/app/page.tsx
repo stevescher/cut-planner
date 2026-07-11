@@ -114,6 +114,7 @@ export default function Home() {
                 onClick={handleUndo}
                 disabled={!canUndo}
                 title="Undo (⌘Z)"
+                aria-label="Undo"
                 className="h-7 w-7 rounded-lg flex items-center justify-center text-slate-500
                            hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
               >
@@ -123,6 +124,7 @@ export default function Home() {
                 onClick={handleRedo}
                 disabled={!canRedo}
                 title="Redo (⌘⇧Z)"
+                aria-label="Redo"
                 className="h-7 w-7 rounded-lg flex items-center justify-center text-slate-500
                            hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
               >
@@ -147,10 +149,12 @@ export default function Home() {
       )}
 
       {/* ── Body ───────────────────────────────────────────────────────── */}
-      <div className="flex flex-1 min-h-0">
+      {/* Stacks vertically on narrow screens (shop tablets/phones) so the
+          fixed-width sidebar never crushes the viewer; side-by-side from md up. */}
+      <div className="flex flex-col md:flex-row flex-1 min-h-0">
 
         {/* ── Sidebar ──────────────────────────────────────────────────── */}
-        <aside className="w-[360px] shrink-0 flex flex-col border-r border-slate-200"
+        <aside className="w-full md:w-[360px] shrink-0 flex flex-col border-b md:border-b-0 md:border-r border-slate-200 max-h-[55vh] md:max-h-none"
           style={{ background: 'var(--sidebar)' }}>
 
           <ScrollArea className="flex-1">

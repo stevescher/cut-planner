@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useLayoutStore } from '@/store/useLayoutStore';
 import { useDragStore } from '@/store/useDragStore';
 import { SheetCanvas } from './SheetCanvas';
@@ -91,6 +91,8 @@ export function LayoutViewer() {
   const [reOptimizing, setReOptimizing] = useState(false);
   const [fixing, setFixing] = useState(false);
   const [expandedSheetIdx, setExpandedSheetIdx] = useState<number | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const lastFocusedRef = useRef<HTMLElement | null>(null);
 
   // Lock background scroll + keyboard nav while lightbox is open
   useEffect(() => {
@@ -103,9 +105,35 @@ export function LayoutViewer() {
         setExpandedSheetIdx((i) => (i !== null && i < total - 1 ? i + 1 : i));
       if (e.key === 'ArrowLeft' || e.key === 'ArrowUp')
         setExpandedSheetIdx((i) => (i !== null && i > 0 ? i - 1 : i));
+      // Trap Tab focus inside the dialog.
+      if (e.key === 'Tab' && dialogRef.current) {
+        const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        const active = document.activeElement as HTMLElement;
+        const inList = Array.prototype.includes.call(focusable, active);
+        // Focus starts on the dialog container itself (outside the list), so an
+        // immediate Shift+Tab would otherwise escape the modal. Treat any focus
+        // outside the collected elements as a wrap to the correct end.
+        if (e.shiftKey && (active === first || !inList)) {
+          e.preventDefault(); last.focus();
+        } else if (!e.shiftKey && (active === last || !inList)) {
+          e.preventDefault(); first.focus();
+        }
+      }
     };
     window.addEventListener('keydown', onKey);
-    return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = ''; };
+    // Move focus into the dialog and restore it to the trigger on close.
+    lastFocusedRef.current = document.activeElement as HTMLElement;
+    requestAnimationFrame(() => dialogRef.current?.focus());
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = '';
+      lastFocusedRef.current?.focus?.();
+    };
   }, [expandedSheetIdx, solutions, activeSolutionIndex]);
 
   if (solutions.length === 0) {
@@ -431,7 +459,7 @@ export function LayoutViewer() {
                 className="absolute left-4 top-1/2 -translate-y-1/2 z-20 h-10 w-10 rounded-full
                            bg-white/90 hover:bg-white shadow-lg flex items-center justify-center
                            text-slate-700 transition-all"
-                title="Previous sheet"
+                title="Previous sheet" aria-label="Previous sheet"
               >
                 <ChevronLeft className="h-5 w-5" />
               </button>
@@ -444,7 +472,7 @@ export function LayoutViewer() {
                 className="absolute right-4 top-1/2 -translate-y-1/2 z-20 h-10 w-10 rounded-full
                            bg-white/90 hover:bg-white shadow-lg flex items-center justify-center
                            text-slate-700 transition-all"
-                title="Next sheet"
+                title="Next sheet" aria-label="Next sheet"
               >
                 <ChevronRight className="h-5 w-5" />
               </button>
@@ -452,8 +480,13 @@ export function LayoutViewer() {
 
             {/* Card */}
             <div
+              ref={dialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-label={`Sheet ${idx + 1}${totalSheets > 1 ? ` of ${totalSheets}` : ''}${stockSheet.label ? ` — ${stockSheet.label}` : ''}`}
+              tabIndex={-1}
               className="relative bg-white rounded-2xl shadow-2xl overflow-auto p-6
-                         max-w-[95vw] max-h-[92vh]"
+                         max-w-[95vw] max-h-[92vh] outline-none"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header row: sheet counter + close */}
@@ -466,7 +499,7 @@ export function LayoutViewer() {
                   onClick={() => setExpandedSheetIdx(null)}
                   className="h-8 w-8 rounded-full bg-slate-100 hover:bg-slate-200
                              flex items-center justify-center transition-colors"
-                  title="Close (Esc)"
+                  title="Close (Esc)" aria-label="Close"
                 >
                   <X className="h-4 w-4 text-slate-600" />
                 </button>
