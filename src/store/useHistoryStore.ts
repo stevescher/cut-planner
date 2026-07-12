@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { Solution } from '@/lib/optimizer/types';
 
-interface HistoryEntry {
+export interface HistoryEntry {
   solutions: Solution[];
   activeSolutionIndex: number;
 }
@@ -11,8 +11,10 @@ interface HistoryState {
   future: HistoryEntry[];
 
   pushState: (entry: HistoryEntry) => void;
-  undo: () => HistoryEntry | null;
-  redo: () => HistoryEntry | null;
+  /** Pass the current (live) layout so it can be moved onto the redo stack. */
+  undo: (current: HistoryEntry) => HistoryEntry | null;
+  /** Pass the current (live) layout so it can be moved onto the undo stack. */
+  redo: (current: HistoryEntry) => HistoryEntry | null;
   canUndo: () => boolean;
   canRedo: () => boolean;
   clear: () => void;
@@ -31,23 +33,27 @@ export const useHistoryStore = create<HistoryState>((set, get) => ({
       future: [],
     })),
 
-  undo: () => {
+  undo: (current) => {
     const { past } = get();
     if (past.length === 0) return null;
     const previous = past[past.length - 1];
     set((state) => ({
       past: state.past.slice(0, -1),
-      future: [previous, ...state.future],
+      // Move the state we're leaving (the live one) onto the redo stack, so
+      // a subsequent redo can restore it. Pushing `previous` here would lose it.
+      future: [current, ...state.future],
     }));
     return previous;
   },
 
-  redo: () => {
+  redo: (current) => {
     const { future } = get();
     if (future.length === 0) return null;
     const next = future[0];
     set((state) => ({
-      past: [...state.past, next],
+      // Symmetric with undo: the live state we're leaving goes back onto the
+      // undo stack so it can be undone again.
+      past: [...state.past, current],
       future: state.future.slice(1),
     }));
     return next;

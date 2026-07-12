@@ -18,6 +18,25 @@ import { useOptimizer } from '@/hooks/useOptimizer';
 import { Scissors, Undo2, Redo2 } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import type { HistoryEntry } from '@/store/useHistoryStore';
+
+/** Snapshot of the live layout, handed to undo()/redo() so the state being
+ *  left behind can be moved onto the opposite history stack. */
+function currentEntry(): HistoryEntry {
+  const layout = useLayoutStore.getState();
+  return {
+    solutions: layout.solutions,
+    activeSolutionIndex: layout.activeSolutionIndex,
+  };
+}
+
+/** Apply a restored history entry to the live layout (no-op if null). */
+function applyHistoryEntry(entry: HistoryEntry | null) {
+  if (!entry) return;
+  const layout = useLayoutStore.getState();
+  layout.setSolutions(entry.solutions);
+  layout.setActive(entry.activeSolutionIndex);
+}
 
 export default function Home() {
   useAutoSave();
@@ -35,19 +54,11 @@ export default function Home() {
       if (isEditableTarget(e.target)) return;
       if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
-        const entry = useHistoryStore.getState().undo();
-        if (entry) {
-          useLayoutStore.getState().setSolutions(entry.solutions);
-          useLayoutStore.getState().setActive(entry.activeSolutionIndex);
-        }
+        applyHistoryEntry(useHistoryStore.getState().undo(currentEntry()));
       }
       if ((e.metaKey || e.ctrlKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
         e.preventDefault();
-        const entry = useHistoryStore.getState().redo();
-        if (entry) {
-          useLayoutStore.getState().setSolutions(entry.solutions);
-          useLayoutStore.getState().setActive(entry.activeSolutionIndex);
-        }
+        applyHistoryEntry(useHistoryStore.getState().redo(currentEntry()));
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -61,21 +72,8 @@ export default function Home() {
   const canUndo = useHistoryStore((s) => s.past.length > 0);
   const canRedo = useHistoryStore((s) => s.future.length > 0);
 
-  const handleUndo = () => {
-    const entry = useHistoryStore.getState().undo();
-    if (entry) {
-      useLayoutStore.getState().setSolutions(entry.solutions);
-      useLayoutStore.getState().setActive(entry.activeSolutionIndex);
-    }
-  };
-
-  const handleRedo = () => {
-    const entry = useHistoryStore.getState().redo();
-    if (entry) {
-      useLayoutStore.getState().setSolutions(entry.solutions);
-      useLayoutStore.getState().setActive(entry.activeSolutionIndex);
-    }
-  };
+  const handleUndo = () => applyHistoryEntry(useHistoryStore.getState().undo(currentEntry()));
+  const handleRedo = () => applyHistoryEntry(useHistoryStore.getState().redo(currentEntry()));
 
   const canOptimize =
     stockSheets.some((s) => s.length > 0 && s.width > 0) &&
