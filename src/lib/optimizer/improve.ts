@@ -103,8 +103,13 @@ function tryPlace(
   let best: { rect: FreeRect; w: number; h: number; rotated: boolean; leftover: number } | null = null;
   for (const rect of ws.free) {
     for (const d of dims) {
-      // Require room for the piece plus a kerf gap on the trailing edges.
-      if (d.w + kerf <= rect.w + FIT_EPS && d.h + kerf <= rect.h + FIT_EPS) {
+      // Fit against the RAW piece size — kerf is consumed only BETWEEN adjacent
+      // pieces (reserved on subtraction below via reserveWithKerf), never against
+      // a free-rect boundary. Adding kerf here double-charged it on a neighbour
+      // edge and charged it spuriously against the sheet edge, rejecting valid
+      // boundary-flush placements (OPUS-399). Matches the guillotine/reoptimize
+      // fit convention: `r.w >= pieceW - FIT_EPS`.
+      if (d.w <= rect.w + FIT_EPS && d.h <= rect.h + FIT_EPS) {
         const leftover = rect.w * rect.h - d.w * d.h;
         if (!best || leftover < best.leftover) {
           best = { rect, w: d.w, h: d.h, rotated: d.rotated, leftover };
@@ -236,8 +241,22 @@ export function improveSolution(
       }
 
       if (allMoved) {
-        // Commit: rebuild the surviving sheets and drop the emptied one.
-        sheets = committed.map((ws) => rebuildLayout(ws));
+        // Rebuild the surviving sheets and derive their cut sequences.
+        const rebuilt = committed.map((ws) => rebuildLayout(ws));
+
+        // Guard (OPUS-398): a relocation can pack pieces into a non-guillotine
+        // arrangement (e.g. a pinwheel), whose derived cut sequence is only an
+        // approximation — a saw cut would pass through a placed part. The ranking
+        // objective (compareScores) has no term for that, so `solveAll` would
+        // happily promote such a layout just because it uses one fewer sheet.
+        // Reject any elimination that leaves an approximate sheet and try the
+        // next target instead; the guillotine-valid baseline is kept.
+        if (rebuilt.some((s) => s.cutSequenceApproximate)) {
+          continue;
+        }
+
+        // Commit: drop the emptied sheet, keep the rebuilt (guillotine-valid) ones.
+        sheets = rebuilt;
         eliminated = true;
         break;
       }

@@ -204,3 +204,130 @@ describe('sheet-elimination relocate', () => {
     expect(improved.totalSheets).toBe(1);
   });
 });
+
+// ── OPUS-399: kerf must not be charged against the sheet boundary ──────────────
+
+/**
+ * Two 47.9375 × 48 halves exactly fill a 96 × 48 sheet with a single 0.125 kerf
+ * between them (47.9375 + 0.125 + 47.9375 = 96). Each half is full-height (48),
+ * flush to the top and bottom sheet edges. A correct fit check charges kerf only
+ * between parts, so relocating the second half into the free strip beside the
+ * first must succeed and collapse the layout to one sheet.
+ *
+ * The pre-fix `tryPlace` required `height + kerf <= rect.h` — 48 + 0.125 > 48 —
+ * so it rejected the flush placement and left two sheets.
+ */
+function boundaryFlushTwoSheet(): { solution: Solution; sheets: StockSheet[]; panels: Panel[] } {
+  const sheets = [stock({ id: 's1', length: 96, width: 48 })];
+  const panels = [panel({ id: 'h', label: 'Half', length: 47.9375, width: 48, quantity: 2 })];
+
+  const half = (): Placement => ({
+    panelId: 'h', label: 'Half',
+    x: 0, y: 0, width: 47.9375, height: 48,
+    rotated: false, pinned: false, color: '#334455',
+  });
+
+  const mk = (sheetIndex: number): SheetLayout => {
+    const placements = [half()];
+    return {
+      stockSheetId: 's1', sheetIndex, placements,
+      cutSequence: [], wastePercent: 50, usedArea: 47.9375 * 48,
+    };
+  };
+
+  const solution: Solution = {
+    id: 'greedy', strategyName: 'test',
+    sheets: [mk(0), mk(1)],
+    totalWaste: 50, totalSheets: 2, unplacedPanels: [],
+  };
+  return { solution, sheets, panels };
+}
+
+describe('sheet-elimination respects sheet boundaries (OPUS-399)', () => {
+  it('collapses two boundary-flush halves onto one sheet (kerf only between parts)', () => {
+    const { solution, sheets, panels } = boundaryFlushTwoSheet();
+    const improved = improveSolution(solution, sheets, panels, 0.125);
+
+    // Both halves fit on one 96×48 sheet with a single kerf between them.
+    expect(improved.totalSheets).toBe(1);
+    expect(countPieces(improved)).toBe(2);
+    expect(hasOverlap(improved.sheets[0].placements)).toBe(false);
+    // Every placed piece stays inside the usable sheet bounds.
+    for (const p of improved.sheets[0].placements) {
+      expect(p.x).toBeGreaterThanOrEqual(0);
+      expect(p.y).toBeGreaterThanOrEqual(0);
+      expect(p.x + p.width).toBeLessThanOrEqual(96 + 1e-6);
+      expect(p.y + p.height).toBeLessThanOrEqual(48 + 1e-6);
+    }
+  });
+});
+
+// ── OPUS-398: never promote a non-guillotine (approximate) relocation ──────────
+
+/**
+ * A pinwheel arrangement: four interlocking 30×10 / 10×30 arms that tile a 40×40
+ * square only in a NON-guillotine layout — no single straight edge-to-edge cut
+ * separates them, so `deriveCutSequenceFromPlacements` returns an approximate
+ * sequence (a cut line would pass through a part).
+ *
+ * Arms (rotation-locked so the relocation can't re-orient into a clean tiling):
+ *   a  (0,0)  30×10   — top
+ *   b  (30,0) 10×30   — right
+ *   c  (10,30) 30×10  — bottom
+ *   d  (0,10) 10×30   — left   ← the interlocking arm
+ *
+ * Baseline: two sheets, three arms on the first, the fourth (d) alone on the
+ * second. Relocating d into the pinwheel notch on the first sheet empties the
+ * second — but the combined layout is non-guillotine, so the pass must NOT
+ * promote it. kerf=0 keeps the notch exactly d-sized so the geometry is exact.
+ */
+function pinwheelTwoSheet(): { solution: Solution; sheets: StockSheet[]; panels: Panel[] } {
+  const sheets = [stock({ id: 's1', length: 40, width: 40 })];
+  const panels = [
+    panel({ id: 'a', label: 'a', length: 30, width: 10, quantity: 1, lockRotation: true }),
+    panel({ id: 'b', label: 'b', length: 10, width: 30, quantity: 1, lockRotation: true }),
+    panel({ id: 'c', label: 'c', length: 30, width: 10, quantity: 1, lockRotation: true }),
+    panel({ id: 'd', label: 'd', length: 10, width: 30, quantity: 1, lockRotation: true }),
+  ];
+  const p = (id: string, x: number, y: number, w: number, h: number): Placement => ({
+    panelId: id, label: id, x, y, width: w, height: h,
+    rotated: false, pinned: false, color: '#884422',
+  });
+
+  const s0: SheetLayout = {
+    stockSheetId: 's1', sheetIndex: 0,
+    placements: [p('a', 0, 0, 30, 10), p('b', 30, 0, 10, 30), p('c', 10, 30, 30, 10)],
+    cutSequence: [], wastePercent: 0, usedArea: 900,
+  };
+  const s1: SheetLayout = {
+    stockSheetId: 's1', sheetIndex: 1,
+    placements: [p('d', 0, 0, 10, 30)],
+    cutSequence: [], wastePercent: 0, usedArea: 300,
+  };
+  const solution: Solution = {
+    id: 'greedy', strategyName: 'test',
+    sheets: [s0, s1], totalWaste: 0, totalSheets: 2, unplacedPanels: [],
+  };
+  return { solution, sheets, panels };
+}
+
+describe('sheet-elimination never promotes an approximate cut sequence (OPUS-398)', () => {
+  it('does not eliminate a sheet when the only single-sheet fit is non-guillotine', () => {
+    const { solution, sheets, panels } = pinwheelTwoSheet();
+    // kerf=0 makes the pinwheel notch exactly d-sized so the relocation is
+    // geometrically possible — the ONLY thing that should stop it is the
+    // approximate-cut guard.
+    const improved = improveSolution(solution, sheets, panels, 0);
+
+    // No surviving sheet may carry an approximate cut sequence — a promoted
+    // approximate layout would show cuts passing through parts.
+    for (const sheet of improved.sheets) {
+      expect(sheet.cutSequenceApproximate ?? false).toBe(false);
+    }
+    // The guard rejects the pinwheel collapse, so the two-sheet (guillotine-valid)
+    // baseline is preserved rather than replaced by a 1-sheet approximate layout.
+    expect(improved.totalSheets).toBe(2);
+    // No piece is dropped.
+    expect(countPieces(improved)).toBe(4);
+  });
+});
