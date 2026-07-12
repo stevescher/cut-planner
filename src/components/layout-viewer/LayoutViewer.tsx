@@ -80,7 +80,7 @@ function suggestFixes(
 export function LayoutViewer() {
   const { solutions, activeSolutionIndex, revealedCount, setActive, setSolutions, shuffleNext } =
     useLayoutStore();
-  const { stockSheets, kerf, updateStockSheet, units } = useProjectStore();
+  const { stockSheets, panels, kerf, updateStockSheet, units } = useProjectStore();
   const { pinnedPieces } = useDragStore();
   const { zoom, setZoom } = useViewStore();
   const optimize = useOptimizer();
@@ -169,7 +169,8 @@ export function LayoutViewer() {
         activeSolution,
         stockSheets,
         pinnedPieces,
-        kerf
+        kerf,
+        panels
       );
       // Inject re-optimized result as a new top solution
       const updated = [reOptimized, ...solutions.filter((s) => s.id !== activeSolution.id)];

@@ -289,7 +289,7 @@ describe('reOptimizeAroundPinned kerf clearance', () => {
       ],
     };
     const stock: StockSheet = sheet({ id: 's1', length: 20, width: 48 });
-    const out = reOptimizeAroundPinned(solution, [stock], new Set(['s1-0:0']), kerf);
+    const out = reOptimizeAroundPinned(solution, [stock], new Set(['s1-0:0']), kerf, []);
     const ps = out.sheets[0].placements;
     // Any two horizontally-adjacent parts must be separated by at least the kerf.
     for (let i = 0; i < ps.length; i++) {
@@ -301,5 +301,75 @@ describe('reOptimizeAroundPinned kerf clearance', () => {
         expect(gap).toBeGreaterThanOrEqual(kerf - 1e-6);
       }
     }
+  });
+});
+
+describe('reOptimizeAroundPinned respects lockRotation (OPUS-401)', () => {
+  // A sheet only tall in Y and narrow in X: an unrotated 40(x)×10(y) part does
+  // NOT fit (needs 40 of X, only 12 available), but a rotated 10(x)×40(y) part
+  // DOES. Without a lock guard the re-optimizer would rotate the locked part to
+  // place it; with the guard it must refuse and leave it unplaced instead.
+  const narrowTallStock: StockSheet = sheet({ id: 's1', length: 12, width: 48 });
+
+  function lockedSolution(pinned: boolean): Solution {
+    return {
+      id: 'sol',
+      strategyName: 'test',
+      totalWaste: 0,
+      totalSheets: 1,
+      unplacedPanels: [],
+      sheets: [
+        {
+          stockSheetId: 's1',
+          sheetIndex: 0,
+          wastePercent: 0,
+          usedArea: 0,
+          cutSequence: [],
+          // Placed unrotated (40 long in x, 10 in y) — but that can't actually
+          // fit the 12-wide sheet; the point is the re-plan must not "fix" it by
+          // rotating a locked part.
+          placements: [
+            { panelId: 'locked', label: 'L', x: 0, y: 0, width: 40, height: 10, rotated: false, pinned, color: '#111' },
+          ],
+        },
+      ],
+    };
+  }
+
+  const lockedPanels: Panel[] = [
+    panel({ id: 'locked', length: 40, width: 10, lockRotation: true }),
+  ];
+
+  it('does not rotate a locked anchored (pinned) panel to make it fit', () => {
+    const out = reOptimizeAroundPinned(lockedSolution(true), [narrowTallStock], new Set(['s1-0:0']), 0.125, lockedPanels);
+    const placed = out.sheets[0].placements.filter((p) => p.panelId === 'locked');
+    // It must NOT appear rotated. Either it stays unrotated, or it isn't placed
+    // at all — but it is never flipped to 10×40.
+    for (const p of placed) {
+      expect(p.rotated).toBe(false);
+      expect(p.width).toBeCloseTo(40, 6);
+    }
+  });
+
+  it('does not rotate a locked floating (unpinned) panel to make it fit', () => {
+    const out = reOptimizeAroundPinned(lockedSolution(false), [narrowTallStock], new Set<string>(), 0.125, lockedPanels);
+    const placed = out.sheets[0].placements.filter((p) => p.panelId === 'locked');
+    for (const p of placed) {
+      expect(p.rotated).toBe(false);
+      expect(p.width).toBeCloseTo(40, 6);
+    }
+  });
+
+  it('still rotates an UNLOCKED panel when that is the only way to place it', () => {
+    const unlockedPanels: Panel[] = [
+      panel({ id: 'locked', length: 40, width: 10, lockRotation: false }),
+    ];
+    const out = reOptimizeAroundPinned(lockedSolution(false), [narrowTallStock], new Set<string>(), 0.125, unlockedPanels);
+    const placed = out.sheets[0].placements.filter((p) => p.panelId === 'locked');
+    // Unlocked: the re-optimizer is free to rotate it to fit the tall/narrow sheet.
+    expect(placed).toHaveLength(1);
+    expect(placed[0].rotated).toBe(true);
+    expect(placed[0].width).toBeCloseTo(10, 6);
+    expect(placed[0].height).toBeCloseTo(40, 6);
   });
 });

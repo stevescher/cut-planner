@@ -1,5 +1,5 @@
 import { nanoid } from 'nanoid';
-import { Solution, SheetLayout, StockSheet, Placement, CutStep } from './types';
+import { Solution, SheetLayout, StockSheet, Placement, CutStep, Panel } from './types';
 import { FIT_EPS } from './guillotine';
 import {
   FreeRect,
@@ -454,8 +454,16 @@ export function reOptimizeAroundPinned(
   solution: Solution,
   stockSheets: StockSheet[],
   pinnedPieces: Set<string>, // keys: "stockSheetId-sheetIndex:placementIndex"
-  kerf: number
+  kerf: number,
+  panels: Panel[]
 ): Solution {
+  // Rotation-lock map by panelId. A locked panel must keep its orientation, so
+  // both packing passes below skip rotated fits for it — mirroring the main
+  // solver (solver.ts) and improvement pass (improve.ts), which the anchored
+  // re-plan path previously did not honor.
+  const lockById = new Map<string, boolean>();
+  for (const p of panels) lockById.set(p.id, p.lockRotation);
+
   const newSheets: SheetLayout[] = solution.sheets.map((sheet) => {
     const stockSheet = stockSheets.find((s) => s.id === sheet.stockSheetId);
     if (!stockSheet) return sheet;
@@ -497,6 +505,7 @@ export function reOptimizeAroundPinned(
       // the guillotine solver's edge accounting.
       const pw = panel.width;
       const ph = panel.height;
+      const canRotate = !(lockById.get(panel.panelId) ?? false);
 
       // Score each free rect by distance from preferred center
       let bestIdx = -1;
@@ -512,8 +521,8 @@ export function reOptimizeAroundPinned(
           const score = dist2(cx, cy, panel.prefCX, panel.prefCY);
           if (score < bestScore) { bestScore = score; bestIdx = i; bestRotated = false; }
         }
-        // Try rotated
-        if (r.w >= ph - FIT_EPS && r.h >= pw - FIT_EPS) {
+        // Try rotated — skipped for rotation-locked panels to preserve grain.
+        if (canRotate && r.w >= ph - FIT_EPS && r.h >= pw - FIT_EPS) {
           const score = dist2(cx, cy, panel.prefCX, panel.prefCY);
           if (score < bestScore) { bestScore = score; bestIdx = i; bestRotated = true; }
         }
@@ -553,6 +562,7 @@ export function reOptimizeAroundPinned(
       // Raw fit — see Pass 1. Kerf is reserved on subtraction, not on the check.
       const pw = panel.width;
       const ph = panel.height;
+      const canRotate = !(lockById.get(panel.panelId) ?? false);
 
       let bestIdx = -1;
       let bestArea = Infinity;
@@ -564,7 +574,8 @@ export function reOptimizeAroundPinned(
           const area = r.w * r.h;
           if (area < bestArea) { bestArea = area; bestIdx = i; bestRotated = false; }
         }
-        if (r.w >= ph - FIT_EPS && r.h >= pw - FIT_EPS) {
+        // Rotated fit — skipped for rotation-locked panels to preserve grain.
+        if (canRotate && r.w >= ph - FIT_EPS && r.h >= pw - FIT_EPS) {
           const area = r.w * r.h;
           if (area < bestArea) { bestArea = area; bestIdx = i; bestRotated = true; }
         }
