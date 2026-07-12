@@ -276,6 +276,54 @@ function drawCostPage(
 
 // ── Per-sheet pages: diagram (top) + cut list (bottom) ───────────────────────
 
+// Cut-list layout constants — shared by the page-count helper and the drawer so
+// the two never disagree (a mismatch would drop rows or mis-number pages).
+const CUTLIST_ROW_H = 0.22;
+const CUTLIST_HEADER_H = 0.47; // "Cut List" title (0.22) + column row (0.07) + rule gap (0.18)
+const CUTLIST_CONT_TOP = 0.5;  // continuation-page cut-list header start (below top margin)
+const CUTLIST_BOTTOM_MARGIN = 0.2; // matches the original overflow guard (pageH - margin - 0.2)
+
+/** Cut-list layout, exported so the pagination test can faithfully simulate the
+ *  render loop and assert sheetPageCount matches it (no rows dropped). */
+export const CUTLIST_GEOMETRY = {
+  rowH: CUTLIST_ROW_H,
+  headerH: CUTLIST_HEADER_H,
+  contTop: CUTLIST_CONT_TOP,
+  bottomMargin: CUTLIST_BOTTOM_MARGIN,
+} as const;
+
+/** Diagram geometry + where the cut list starts, derived purely from sheet
+ *  dimensions so the count helper and the drawer compute an identical layout. */
+export function sheetDiagramMetrics(sheetW: number, sheetH: number, pageW: number, pageH: number, margin: number) {
+  const diagramTop = margin + 0.55;
+  const usableW = pageW - margin * 2;
+  const usableH = pageH - margin * 2;
+  const maxDiagramH = usableH * 0.54;
+  const scale = Math.min((usableW - 0.3) / sheetW, maxDiagramH / sheetH);
+  const drawH = sheetH * scale;
+  const cutListTop = diagramTop + drawH + 0.35;
+  return { scale, drawH, drawY: diagramTop, cutListTop };
+}
+
+/** Rows the cut list can hold on a given page. The first page shares space with
+ *  the diagram (starts at cutListTop); continuation pages are cut-list-only. */
+function cutListRowsFor(pageH: number, margin: number, cutListTop: number, firstPage: boolean): number {
+  const headerStart = firstPage ? cutListTop : margin + CUTLIST_CONT_TOP;
+  const firstRowY = headerStart + CUTLIST_HEADER_H;
+  const bottom = pageH - margin - CUTLIST_BOTTOM_MARGIN;
+  return Math.max(1, Math.floor((bottom - firstRowY) / CUTLIST_ROW_H) + 1);
+}
+
+/** How many pages one sheet occupies: its diagram+cut-list page plus any
+ *  continuation pages the cut list overflows onto. Always ≥ 1. */
+export function sheetPageCount(placementCount: number, sheetW: number, sheetH: number, pageW: number, pageH: number, margin: number): number {
+  const { cutListTop } = sheetDiagramMetrics(sheetW, sheetH, pageW, pageH, margin);
+  const first = cutListRowsFor(pageH, margin, cutListTop, true);
+  if (placementCount <= first) return 1;
+  const rest = cutListRowsFor(pageH, margin, cutListTop, false);
+  return 1 + Math.ceil((placementCount - first) / rest);
+}
+
 function drawSheetPage(
   pdf: jsPDF,
   solution: Solution,
@@ -288,12 +336,14 @@ function drawSheetPage(
   pageNum: number,
   totalPages: number,
   units: Units,
-) {
+): number {
   const sfx = unitSuffix(units);
   const fmt = (v: number) => formatDisplay(v, units);
   const sheet = solution.sheets[sheetIndex];
   const stockSheet = stockSheets.find((s) => s.id === sheet.stockSheetId);
-  if (!stockSheet) return;
+  // No matching stock: still consume the single page reserved for this sheet in
+  // totalPages, so page numbering stays consistent.
+  if (!stockSheet) return 1;
 
   const sheetW = stockSheet.length;
   const sheetH = stockSheet.width;
@@ -311,15 +361,10 @@ function drawSheetPage(
   pdf.text(`Waste: ${sheet.wastePercent.toFixed(1)}%`, pageW - margin, margin + 0.3, { align: 'right' });
 
   // ── Diagram (upper ~55% of usable vertical space) ────────────────────────
-  const diagramTop = margin + 0.55;
   const usableW = pageW - margin * 2;
-  const usableH = pageH - margin * 2;
-  const maxDiagramH = usableH * 0.54;
-  const scale = Math.min((usableW - 0.3) / sheetW, maxDiagramH / sheetH);
+  const { scale, drawH, drawY, cutListTop } = sheetDiagramMetrics(sheetW, sheetH, pageW, pageH, margin);
   const drawW = sheetW * scale;
-  const drawH = sheetH * scale;
   const drawX = margin + (usableW - drawW) / 2;
-  const drawY = diagramTop;
 
   // Dimension labels
   pdf.setFontSize(8);
@@ -381,44 +426,60 @@ function drawSheetPage(
   });
 
   // ── Cut list for this sheet (below diagram) ──────────────────────────────
-  const cutListTop = drawY + drawH + 0.35;
-  let y = cutListTop;
+  // Paginated so no placement is ever silently dropped: when the rows overflow
+  // the space below the diagram, the list continues on a fresh page (mirrors
+  // the summary/cost table pagination). The first page's list starts below the
+  // diagram; continuation pages are cut-list-only. (OPUS-404)
+  const drawCutListHeader = (yStart: number, continued: boolean): number => {
+    let yy = yStart;
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(9);
+    pdf.setTextColor(30, 30, 30);
+    pdf.text(continued ? 'Cut List (cont.)' : 'Cut List', margin, yy);
 
-  pdf.setFont('helvetica', 'bold');
-  pdf.setFontSize(9);
-  pdf.setTextColor(30, 30, 30);
-  pdf.text('Cut List', margin, y);
+    yy += 0.22;
+    pdf.setFontSize(7.5);
+    pdf.setTextColor(110, 110, 110);
+    pdf.text('#', margin, yy);
+    pdf.text('Panel', margin + 0.25, yy);
+    pdf.text('Length', margin + 2.8, yy);
+    pdf.text('Width', margin + 3.7, yy);
+    pdf.text('Rotated', margin + 4.6, yy);
 
-  y += 0.22;
-  pdf.setFontSize(7.5);
-  pdf.setTextColor(110, 110, 110);
-  pdf.text('#', margin, y);
-  pdf.text('Panel', margin + 0.25, y);
-  pdf.text('Length', margin + 2.8, y);
-  pdf.text('Width', margin + 3.7, y);
-  pdf.text('Rotated', margin + 4.6, y);
+    yy += 0.07;
+    pdf.setDrawColor(200, 200, 200);
+    pdf.setLineWidth(0.005);
+    pdf.line(margin, yy, pageW - margin, yy);
+    yy += 0.18;
 
-  y += 0.07;
-  pdf.setDrawColor(200, 200, 200);
-  pdf.setLineWidth(0.005);
-  pdf.line(margin, y, pageW - margin, y);
-  y += 0.18;
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(8);
+    pdf.setTextColor(40, 40, 40);
+    return yy;
+  };
 
-  pdf.setFont('helvetica', 'normal');
-  pdf.setFontSize(8);
-  pdf.setTextColor(40, 40, 40);
+  let pageIdx = 0;
+  let y = drawCutListHeader(cutListTop, false);
+  const rowBottom = pageH - margin - CUTLIST_BOTTOM_MARGIN;
 
   sheet.placements.forEach((p, pi) => {
-    if (y > pageH - margin - 0.2) return; // overflow guard
+    if (y > rowBottom) {
+      // Page full — footer the current page, start a continuation page.
+      drawPageFooter(pdf, projectName, pageNum + pageIdx, totalPages, pageW, pageH, margin);
+      pdf.addPage();
+      pageIdx++;
+      y = drawCutListHeader(margin + CUTLIST_CONT_TOP, true);
+    }
     pdf.text(String(pi + 1), margin, y);
     pdf.text(p.label || `—`, margin + 0.25, y);
     pdf.text(`${fmt(p.width)}${sfx}`, margin + 2.8, y);
     pdf.text(`${fmt(p.height)}${sfx}`, margin + 3.7, y);
     pdf.text(p.rotated ? 'Yes' : 'No', margin + 4.6, y);
-    y += 0.22;
+    y += CUTLIST_ROW_H;
   });
 
-  drawPageFooter(pdf, projectName, pageNum, totalPages, pageW, pageH, margin);
+  drawPageFooter(pdf, projectName, pageNum + pageIdx, totalPages, pageW, pageH, margin);
+  return pageIdx + 1;
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
@@ -438,7 +499,14 @@ export async function exportSolutionAsPdf(
   const summaryPages = summaryPageCount(panels.length, pageH, margin);
   const cost = computeCost(solution, stockSheets);
   const costPages = costPageCount(cost.lines.length, cost.hasPricing, pageH, margin);
-  const totalPages = summaryPages + costPages + solution.sheets.length;
+  // Each sheet occupies its diagram page plus any cut-list continuation pages.
+  const sheetPageCounts = solution.sheets.map((sheet) => {
+    const stock = stockSheets.find((s) => s.id === sheet.stockSheetId);
+    if (!stock) return 1;
+    return sheetPageCount(sheet.placements.length, stock.length, stock.width, pageW, pageH, margin);
+  });
+  const sheetPagesTotal = sheetPageCounts.reduce((a, b) => a + b, 0);
+  const totalPages = summaryPages + costPages + sheetPagesTotal;
 
   // Pages 1..summaryPages: summary + (paginated) panels-needed table
   const usedSummaryPages = drawSummaryPage(
@@ -455,14 +523,16 @@ export async function exportSolutionAsPdf(
     );
   }
 
-  // Remaining pages: one per sheet, numbered after the summary (+ cost) pages
-  const beforeSheets = summaryPages + costPages;
+  // Remaining pages: one (or more, if the cut list overflows) per sheet,
+  // numbered after the summary (+ cost) pages.
+  let sheetPageCursor = summaryPages + costPages;
   for (let si = 0; si < solution.sheets.length; si++) {
     pdf.addPage();
-    drawSheetPage(
+    const used = drawSheetPage(
       pdf, solution, si, stockSheets, margin, pageW, pageH,
-      projectName, beforeSheets + si + 1, totalPages, units
+      projectName, sheetPageCursor + 1, totalPages, units
     );
+    sheetPageCursor += used;
   }
 
   pdf.save(`${safeFilename(projectName, 'cut-planner')}.pdf`);
