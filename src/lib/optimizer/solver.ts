@@ -11,6 +11,7 @@ import { createTree, placeInTree, collectPlacements, FIT_EPS } from './guillotin
 import { deriveCutSequenceFromPlacements } from './reoptimize';
 import { generateStrategies, sortPanels } from './strategies';
 import { getColor } from '../colors';
+import { improveSolution, scoreSolution, compareScores } from './improve';
 
 interface ExpandedPanel {
   panelId: string;
@@ -339,6 +340,20 @@ export function solveAll(config: {
     if (!seen.has(key)) {
       seen.add(key);
       unique.push(sol);
+    }
+  }
+
+  // ── Local-search improvement pass ───────────────────────────────────────────
+  // Run a sheet-elimination relocate on the best candidate. It only ever removes
+  // a sheet (the top ranking term), and improveSolution's internal best-of guard
+  // means the result can never rank worse than the greedy baseline. If it does
+  // improve, re-insert it at the front so the UI shows the better plan first; the
+  // untouched greedy result stays available as an alternative layout.
+  if (unique.length > 0) {
+    const greedyBest = unique[0];
+    const improved = improveSolution(greedyBest, config.stockSheets, config.panels, config.kerf);
+    if (improved !== greedyBest && compareScores(scoreSolution(improved), scoreSolution(greedyBest)) < 0) {
+      unique.unshift(improved);
     }
   }
 
