@@ -76,6 +76,19 @@ export function formatDimension(value: number): string {
   return `${whole} ${bestNum}/${bestDen}`;
 }
 
+/**
+ * Strictly parse a full numeric token, returning NaN for anything that isn't a
+ * complete number. Unlike `parseFloat`, this rejects numeric-prefix garbage
+ * ("12abc" → NaN, "1.2.3" → NaN) so a malformed entry surfaces as an error
+ * instead of silently becoming a wrong value. Mirrors the hardening applied to
+ * price parsing in `cost.ts`. (OPUS-406)
+ */
+export function parseStrictNumber(input: string): number {
+  const trimmed = input.trim();
+  if (!/^\d*\.?\d+$/.test(trimmed)) return NaN;
+  return parseFloat(trimmed);
+}
+
 // ── Metric (millimeters) ──────────────────────────────────────────────────────
 
 const MM_PER_INCH = 25.4;
@@ -84,7 +97,9 @@ const MM_PER_INCH = 25.4;
 export function parseMetric(input: string): number {
   const trimmed = input.trim().replace(/\s*mm$/i, '');
   if (!trimmed) return NaN;
-  const mm = parseFloat(trimmed);
+  // Strict: reject numeric-prefix garbage ("12abc", "1.2.3") rather than
+  // silently coercing it to a wrong dimension via parseFloat. (OPUS-406)
+  const mm = parseStrictNumber(trimmed);
   if (isNaN(mm)) return NaN;
   return mm / MM_PER_INCH;
 }

@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react';
 import { Upload, Download, X, AlertCircle, Check } from 'lucide-react';
 import { useProjectStore } from '@/store/useProjectStore';
-import { parseInput } from '@/lib/fractions';
+import { parseInput, parseStrictNumber } from '@/lib/fractions';
 import { Panel } from '@/lib/optimizer/types';
 import { csvRow } from '@/lib/safe-export';
 import { nanoid } from 'nanoid';
@@ -98,7 +98,9 @@ function parseRows(csvText: string, units: 'imperial' | 'metric'): ParsedRow[] {
     const width = parseInput(rawWidth, units);
     // Clamp qty to the same 1..100 range the project validator enforces, so a
     // fat-fingered "9999" can't be imported and later choke the optimizer.
-    const parsedQty = parseFloat(rawQty);
+    // Strict: reject numeric-prefix garbage ("3x" → NaN) so a malformed qty
+    // cell is flagged invalid rather than silently coerced. (OPUS-406)
+    const parsedQty = parseStrictNumber(rawQty);
     const qty = Math.min(100, Math.max(1, Math.round(isFinite(parsedQty) ? parsedQty : 1)));
 
     const errors: string[] = [];

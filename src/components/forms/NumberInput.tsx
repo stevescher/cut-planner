@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
-import { parseDimension, formatDimension, parseInput, formatDisplay, Units } from '@/lib/fractions';
+import { parseDimension, formatDimension, parseInput, formatDisplay, parseStrictNumber, Units } from '@/lib/fractions';
 import { cn } from '@/lib/utils';
 
 interface NumberInputProps {
@@ -45,7 +45,9 @@ export function NumberInput({
   const parse = useCallback((text: string): number => {
     if (units) return parseInput(text, units);
     if (fractional) return parseDimension(text);
-    return parseFloat(text);
+    // Generic numeric fields (e.g. quantity) — strict, so "3x" or "1.2.3" is
+    // rejected rather than silently coerced to a numeric prefix. (OPUS-406)
+    return parseStrictNumber(text);
   }, [units, fractional]);
 
   // While focused, or while showing a rejected value, display the raw text the
