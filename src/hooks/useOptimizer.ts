@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { wrap, Remote } from 'comlink';
 import { useProjectStore } from '@/store/useProjectStore';
 import { useLayoutStore } from '@/store/useLayoutStore';
+import { useDragStore } from '@/store/useDragStore';
 import { solveAll } from '@/lib/optimizer/solver';
 
 type WorkerApi = { solveAll: typeof solveAll };
@@ -40,6 +41,11 @@ export function useOptimizer() {
   const optimize = useCallback(async () => {
     const { stockSheets, panels, kerf } = useProjectStore.getState();
     const { setOptimizing, setSolutions } = useLayoutStore.getState();
+
+    // A fresh plan produces brand-new placement arrays, so any pins (which are
+    // keyed by placement index) from a previous plan are meaningless and could
+    // anchor the wrong pieces on a later re-plan. Clear them. (OPUS-402)
+    useDragStore.getState().clearPins();
 
     setOptimizing(true);
     try {

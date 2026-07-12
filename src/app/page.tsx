@@ -13,6 +13,7 @@ import { ExportMenu } from '@/components/export/ExportMenu';
 import { useProjectStore } from '@/store/useProjectStore';
 import { useLayoutStore } from '@/store/useLayoutStore';
 import { useHistoryStore } from '@/store/useHistoryStore';
+import { useDragStore } from '@/store/useDragStore';
 import { useSaveStatusStore } from '@/store/useSaveStatusStore';
 import { useOptimizer } from '@/hooks/useOptimizer';
 import { Scissors, Undo2, Redo2 } from 'lucide-react';
@@ -36,6 +37,9 @@ function applyHistoryEntry(entry: HistoryEntry | null) {
   const layout = useLayoutStore.getState();
   layout.setSolutions(entry.solutions);
   layout.setActive(entry.activeSolutionIndex);
+  // The restored layout has a different placement order than the live one, so
+  // index-keyed pins would now point at the wrong pieces. Clear them. (OPUS-402)
+  useDragStore.getState().clearPins();
 }
 
 export default function Home() {

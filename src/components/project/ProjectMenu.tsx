@@ -3,6 +3,7 @@
 import { useProjectStore } from '@/store/useProjectStore';
 import { useLayoutStore } from '@/store/useLayoutStore';
 import { useHistoryStore } from '@/store/useHistoryStore';
+import { useDragStore } from '@/store/useDragStore';
 import { exportProjectToFile, importProjectFromFile } from '@/lib/project-io';
 import { Button } from '@/components/ui/button';
 import {
@@ -25,14 +26,16 @@ export function ProjectMenu() {
   };
 
   // Loading or starting a new project must also drop the previous project's
-  // computed solutions and undo history, or the viewer shows stale layouts and
-  // undo can jump back into the old project's state.
+  // computed solutions, undo history, and pins — or the viewer shows stale
+  // layouts, undo jumps back into the old project's state, and index-keyed pins
+  // (OPUS-402) can anchor pieces in the new project.
   const handleImport = async () => {
     const data = await importProjectFromFile();
     if (data) {
       loadProjectData(data);
       useLayoutStore.getState().reset();
       useHistoryStore.getState().clear();
+      useDragStore.getState().clearPins();
     }
   };
 
@@ -40,6 +43,7 @@ export function ProjectMenu() {
     reset();
     useLayoutStore.getState().reset();
     useHistoryStore.getState().clear();
+    useDragStore.getState().clearPins();
   };
 
   return (

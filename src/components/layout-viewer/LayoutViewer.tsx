@@ -81,7 +81,7 @@ export function LayoutViewer() {
   const { solutions, activeSolutionIndex, revealedCount, setActive, setSolutions, shuffleNext } =
     useLayoutStore();
   const { stockSheets, panels, kerf, updateStockSheet, units } = useProjectStore();
-  const { pinnedPieces } = useDragStore();
+  const { pinnedPieces, clearPins } = useDragStore();
   const { zoom, setZoom } = useViewStore();
   const optimize = useOptimizer();
   const fmt = (v: number) => formatDisplay(v, units);
@@ -176,6 +176,11 @@ export function LayoutViewer() {
       const updated = [reOptimized, ...solutions.filter((s) => s.id !== activeSolution.id)];
       setSolutions(updated);
       setActive(0);
+      // The repack rebuilds placement arrays in a new order, so the old
+      // index-keyed pins no longer identify the same pieces. Clear them now
+      // that they've been consumed, so the "anchored" banner and any later
+      // re-plan don't act on stale keys. (OPUS-402)
+      clearPins();
       setReOptimizing(false);
     }, 50);
   };
