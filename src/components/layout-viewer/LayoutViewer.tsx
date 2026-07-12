@@ -18,13 +18,13 @@ import { computeCost, formatCurrency } from '@/lib/cost';
 
 // ── Fix suggestion helpers ────────────────────────────────────────────────────
 
-interface SheetSuggestion {
+export interface SheetSuggestion {
   sheet: StockSheet;
   extraQty: number;
   entries: Array<{ panel: Panel; unplacedCount: number }>;
 }
 
-function suggestFixes(
+export function suggestFixes(
   solution: Solution,
   stockSheets: StockSheet[]
 ): { suggestions: SheetSuggestion[]; unfittable: Panel[] } {
@@ -41,9 +41,13 @@ function suggestFixes(
       .filter((s) => {
         const l = s.length - s.trimLeft - s.trimRight;
         const w = s.width - s.trimTop - s.trimBottom;
+        // The rotated orientation is only reachable if rotation is allowed —
+        // the optimizer keeps a lockRotation panel in its given orientation, so
+        // offering an add-sheets fix for a locked panel that only fits rotated
+        // would leave it unplaced after the re-plan. (OPUS-405)
         return (
           (panel.length <= l && panel.width <= w) ||
-          (panel.width <= l && panel.length <= w)
+          (!panel.lockRotation && panel.width <= l && panel.length <= w)
         );
       })
       .sort((a, b) => a.length * a.width - b.length * b.width);
