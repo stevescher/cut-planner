@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { describeCut, describeSheetCuts } from '@/lib/cut-instructions';
-import { CutStep, SheetLayout } from '@/lib/optimizer/types';
+import { deriveCutSequenceFromPlacements } from '@/lib/optimizer/reoptimize';
+import { CutStep, SheetLayout, Placement } from '@/lib/optimizer/types';
 
 // Raw sheet used across cases: 96 (length, x-axis) × 48 (width, y-axis).
 const SHEET_L = 96;
@@ -70,6 +71,70 @@ describe('describeCut — trim (square the stock) detection', () => {
       'imperial', SHEET_L, SHEET_W,
     );
     expect(cut.kind).toBe('rip');
+  });
+
+  // OPUS-403: a zero-trim full-span cut is NOT a trim. When the step carries a
+  // `kind`, that wins over the imprecise full-span geometry heuristic.
+  it('a stamped crosscut spanning the full sheet height is a crosscut, not a trim', () => {
+    const cut = describeCut(
+      step({ orientation: 'vertical', kind: 'crosscut', x1: 95.9, y1: 0, x2: 95.9, y2: SHEET_W }),
+      'imperial', SHEET_L, SHEET_W,
+    );
+    expect(cut.kind).toBe('crosscut');
+    expect(cut.label).not.toContain('Square the stock');
+  });
+
+  it('a stamped rip spanning the full sheet length is a rip, not a trim', () => {
+    const cut = describeCut(
+      step({ orientation: 'horizontal', kind: 'rip', x1: 0, y1: 47.9, x2: SHEET_L, y2: 47.9 }),
+      'imperial', SHEET_L, SHEET_W,
+    );
+    expect(cut.kind).toBe('rip');
+  });
+
+  it('a stamped trim is still labeled square-the-stock', () => {
+    const cut = describeCut(
+      step({ orientation: 'vertical', kind: 'trim', x1: 0.25, y1: 0, x2: 0.25, y2: SHEET_W }),
+      'imperial', SHEET_L, SHEET_W,
+    );
+    expect(cut.kind).toBe('trim');
+    expect(cut.label).toContain('Square the stock');
+  });
+});
+
+describe('deriveCutSequenceFromPlacements → describeCut (end-to-end, OPUS-403)', () => {
+  function placement(overrides: Partial<Placement>): Placement {
+    return {
+      panelId: 'p', label: 'P', x: 0, y: 0, width: 10, height: 10,
+      rotated: false, pinned: false, color: '#111', ...overrides,
+    };
+  }
+
+  it('labels the piece-freeing cut of a 95.9" panel on a zero-trim 96×48 sheet as a crosscut', () => {
+    // The exact case from the handoff: one 95.9-long × 48-wide panel, no trim.
+    // The vertical cut at x=95.9 frees the part to length — a CROSSCUT, not a
+    // square-the-stock trim (there is no trim margin).
+    const placements = [placement({ x: 0, y: 0, width: 95.9, height: 48 })];
+    const { steps } = deriveCutSequenceFromPlacements(placements, 96, 48, { left: 0, top: 0, right: 0, bottom: 0 });
+
+    const verticalCuts = steps.filter((s) => s.orientation === 'vertical');
+    expect(verticalCuts.length).toBe(1);
+    expect(verticalCuts[0].kind).toBe('crosscut');
+
+    const described = describeCut(verticalCuts[0], 'imperial', 96, 48);
+    expect(described.kind).toBe('crosscut');
+    expect(described.label).not.toContain('Square the stock');
+  });
+
+  it('still labels a real square-the-stock cut as trim when a trim margin exists', () => {
+    // 0.25" trim on the left → the first step must be a square-the-stock trim.
+    const placements = [placement({ x: 0.25, y: 0, width: 40, height: 48 })];
+    const { steps } = deriveCutSequenceFromPlacements(placements, 96, 48, { left: 0.25, top: 0, right: 0, bottom: 0 });
+
+    expect(steps[0].kind).toBe('trim');
+    const described = describeCut(steps[0], 'imperial', 96, 48);
+    expect(described.kind).toBe('trim');
+    expect(described.label).toContain('Square the stock');
   });
 });
 

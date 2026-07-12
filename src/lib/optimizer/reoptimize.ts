@@ -105,28 +105,28 @@ export function deriveCutSequenceFromPlacements(
   let stepNum = 1;
   if (trim.left > TRIM_EPS) {
     trimSteps.push({
-      stepNumber: stepNum++, orientation: 'vertical',
+      stepNumber: stepNum++, orientation: 'vertical', kind: 'trim',
       x1: usable.x0, y1: 0, x2: usable.x0, y2: sheetH,
       segments: [{ x1: usable.x0, y1: 0, x2: usable.x0, y2: sheetH }],
     });
   }
   if (trim.right > TRIM_EPS) {
     trimSteps.push({
-      stepNumber: stepNum++, orientation: 'vertical',
+      stepNumber: stepNum++, orientation: 'vertical', kind: 'trim',
       x1: usable.x1, y1: 0, x2: usable.x1, y2: sheetH,
       segments: [{ x1: usable.x1, y1: 0, x2: usable.x1, y2: sheetH }],
     });
   }
   if (trim.top > TRIM_EPS) {
     trimSteps.push({
-      stepNumber: stepNum++, orientation: 'horizontal',
+      stepNumber: stepNum++, orientation: 'horizontal', kind: 'trim',
       x1: 0, y1: usable.y0, x2: sheetW, y2: usable.y0,
       segments: [{ x1: 0, y1: usable.y0, x2: sheetW, y2: usable.y0 }],
     });
   }
   if (trim.bottom > TRIM_EPS) {
     trimSteps.push({
-      stepNumber: stepNum++, orientation: 'horizontal',
+      stepNumber: stepNum++, orientation: 'horizontal', kind: 'trim',
       x1: 0, y1: usable.y1, x2: sheetW, y2: usable.y1,
       segments: [{ x1: 0, y1: usable.y1, x2: sheetW, y2: usable.y1 }],
     });
@@ -150,6 +150,7 @@ export function deriveCutSequenceFromPlacements(
       steps.push({
         stepNumber: stepNum++,
         orientation: 'vertical',
+        kind: 'crosscut',
         x1: rightEdge, y1: usable.y0, x2: rightEdge, y2: usable.y1,
         segments: [{ x1: rightEdge, y1: usable.y0, x2: rightEdge, y2: usable.y1 }],
       });
@@ -160,6 +161,7 @@ export function deriveCutSequenceFromPlacements(
       steps.push({
         stepNumber: stepNum++,
         orientation: 'horizontal',
+        kind: 'rip',
         x1: usable.x0, y1: bottomEdge, x2: usable.x1, y2: bottomEdge,
         segments: [{ x1: usable.x0, y1: bottomEdge, x2: usable.x1, y2: bottomEdge }],
       });
@@ -386,6 +388,7 @@ export function deriveCutSequenceFromPlacements(
       steps.push({
         stepNumber: stepNum++,
         orientation: approx.orientation,
+        kind: approx.orientation === 'vertical' ? 'crosscut' : 'rip',
         ...anchor,
         segments: segs,
         approximate: true,
@@ -421,7 +424,13 @@ export function deriveCutSequenceFromPlacements(
         ? { x1: region.x0, y1: best.position, x2: region.x1, y2: best.position }
         : { x1: best.position, y1: region.y0, x2: best.position, y2: region.y1 };
       const anchor = badgeAnchor(segs, fallback);
-      steps.push({ stepNumber: stepNum++, orientation: best.orientation, ...anchor, segments: segs });
+      steps.push({
+        stepNumber: stepNum++,
+        orientation: best.orientation,
+        kind: best.orientation === 'vertical' ? 'crosscut' : 'rip',
+        ...anchor,
+        segments: segs,
+      });
     }
 
     // Split pieces into sub-groups and recurse

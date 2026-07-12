@@ -47,6 +47,17 @@ export interface Placement {
 export interface CutStep {
   stepNumber: number;
   orientation: 'horizontal' | 'vertical';
+  /**
+   * The cut's semantic kind, stamped at emission time in
+   * `deriveCutSequenceFromPlacements`:
+   *   - 'trim'     — a square-the-stock cut removing a trim margin (edge-to-edge).
+   *   - 'crosscut' — a vertical piece-freeing cut (across the length axis).
+   *   - 'rip'      — a horizontal piece-freeing cut (along the length axis).
+   * Carried so the print view (`cut-instructions.ts`) uses the true kind instead
+   * of re-inferring "trim" from geometry, which mislabels ordinary zero-trim
+   * full-span cuts. Optional for backward compatibility with legacy stored data.
+   */
+  kind?: 'trim' | 'rip' | 'crosscut';
   /** Badge anchor — midpoint of the longest segment */
   x1: number;
   y1: number;

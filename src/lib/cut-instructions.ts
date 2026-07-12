@@ -40,10 +40,11 @@ export interface CutInstruction {
   approximate: boolean;
 }
 
-/** A trim cut spans the full raw sheet on its constant axis. We treat a step as
- *  "square the stock" when it is flagged during derivation by running edge-to-edge
- *  of the sheet rather than within the usable region. Since `CutStep` doesn't carry
- *  a kind, we detect trims by the caller passing the raw sheet bounds. */
+/** Legacy fallback for cut steps that predate the `kind` field (OPUS-403).
+ *  A trim cut spans the full raw sheet on its constant axis. This geometric
+ *  heuristic is imprecise — an ordinary zero-trim full-span crosscut/rip also
+ *  spans the sheet — so it is used ONLY when `step.kind` is absent. Fresh steps
+ *  carry `kind` stamped at emission and never reach this. */
 function isTrimCut(step: CutStep, sheetLength: number, sheetWidth: number): boolean {
   const EPS = 1e-3;
   if (step.orientation === 'vertical') {
@@ -69,7 +70,9 @@ export function describeCut(
 ): CutInstruction {
   const suffix = unitSuffix(units);
   const approximate = step.approximate ?? false;
-  const trim = isTrimCut(step, sheetLength, sheetWidth);
+  // Prefer the kind stamped at emission (OPUS-403). Only fall back to the
+  // imprecise full-span geometry heuristic for legacy steps with no `kind`.
+  const trim = step.kind ? step.kind === 'trim' : isTrimCut(step, sheetLength, sheetWidth);
 
   // Measurement position: vertical cut → x (from left); horizontal cut → y (from top).
   const position = step.orientation === 'vertical' ? step.x1 : step.y1;
