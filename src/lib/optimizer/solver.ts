@@ -5,7 +5,6 @@ import {
   Solution,
   SheetLayout,
   PackingStrategy,
-  Placement,
   GuillotineNode,
 } from './types';
 import { createTree, placeInTree, collectPlacements, FIT_EPS } from './guillotine';

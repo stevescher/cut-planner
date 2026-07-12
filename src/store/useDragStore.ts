@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import { Placement } from '@/lib/optimizer/types';
 
 interface DragState {
   /** Currently dragging piece info */

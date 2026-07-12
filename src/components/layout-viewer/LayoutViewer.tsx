@@ -9,7 +9,6 @@ import { useProjectStore } from '@/store/useProjectStore';
 import { useHistoryStore } from '@/store/useHistoryStore';
 import { reOptimizeAroundPinned } from '@/lib/optimizer/reoptimize';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Button } from '@/components/ui/button';
 import { LayoutGrid, ClipboardList, Anchor, RefreshCw, ZoomIn, ZoomOut, AlertTriangle, PlusCircle, Shuffle, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useViewStore, ZOOM_MIN, ZOOM_MAX, ZOOM_STEP } from '@/store/useViewStore';
 import { useOptimizer } from '@/hooks/useOptimizer';

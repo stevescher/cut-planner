@@ -12,7 +12,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Download, FileText, Image } from 'lucide-react';
+// Aliased to ImageIcon so jsx-a11y/alt-text doesn't mistake the lucide icon for an <img>.
+import { Download, FileText, Image as ImageIcon } from 'lucide-react';
 
 export function ExportMenu() {
   const { solutions, activeSolutionIndex } = useLayoutStore();
@@ -47,7 +48,7 @@ export function ExportMenu() {
           Export as PDF
         </DropdownMenuItem>
         <DropdownMenuItem onClick={handlePngExport}>
-          <Image className="h-4 w-4 mr-2" />
+          <ImageIcon className="h-4 w-4 mr-2" />
           Export as PNG
         </DropdownMenuItem>
       </DropdownMenuContent>

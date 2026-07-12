@@ -1,7 +1,6 @@
 'use client';
 
 import { useViewStore, ViewMode } from '@/store/useViewStore';
-import { useLayoutStore } from '@/store/useLayoutStore';
 import { useDragStore } from '@/store/useDragStore';
 import { Tag, ListOrdered, Unlock, Palette, Ruler } from 'lucide-react';
 
@@ -34,7 +33,6 @@ const VIEW_MODES: { value: ViewMode; label: string; title: string }[] = [
 
 export function LayoutControls() {
   const { showLabels, viewMode, showCutSequence, showEdgeDims, toggleLabels, setViewMode, toggleCutSequence, toggleEdgeDims } = useViewStore();
-  const { solutions, revealedCount } = useLayoutStore();
   const { pinnedPieces, clearPins } = useDragStore();
   const pinnedCount = pinnedPieces.size;
 

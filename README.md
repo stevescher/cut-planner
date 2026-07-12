@@ -491,19 +491,19 @@ Vercel reads the `build` script from `package.json`:
 
 ### Current limitations
 
-**No Web Worker:** `solveAll()` runs on the main thread inside a `setTimeout(fn, 50)` to allow one React render cycle for the loading state. For typical projects (≤50 panels) this is fast enough (<150ms). Very large projects could briefly freeze the UI. The `comlink` package is already installed — a worker implementation is straightforward.
-
 **Guillotine constraint after manual edits:** The initial optimizer produces guillotine-valid layouts. After drag/rotate/re-optimize, placements may no longer be guillotine-valid — they are free-rectangle repacked instead. The cut sequence remains a good approximation (derived from piece edges) but is not a strict guillotine tree traversal.
 
-**localStorage only:** Project data is lost if the browser's localStorage is cleared. The manual JSON export/import workflow mitigates this.
+**localStorage only:** Project data is lost if the browser's localStorage is cleared. Autosave is debounced and warns on write failure, and the manual JSON export/import workflow mitigates this, but there is no cloud sync.
 
-**No grain direction:** Sheet orientation is not tracked. Pieces rotate freely unless a no-rotation strategy wins.
+**No greedy-selection backtracking:** The solver is a heuristic sweep (first-fit-decreasing across ~19 strategies) with no local-search improvement pass, so it can leave material on the table on hard instances.
+
+> Note: `solveAll()` now runs off the main thread in a `comlink` Web Worker (`src/lib/optimizer/optimizer.worker.ts`) with a synchronous main-thread fallback. Per-panel grain direction is supported via the per-panel rotation lock.
 
 ### Planned additions
 
 | Feature | Notes |
 |---|---|
-| **Web Worker** | Move `solveAll()` off-thread via `comlink` (already installed) |
+| **Local-search improvement pass** | Swap/relocate after the greedy sweep to reduce sheet count/waste |
 | **Material pricing** | Cost per sheet type → total material estimate |
 | **User accounts + cloud save** | Projects saved server-side; `localStorage` as fallback |
 | **Remnant tracking** | Mark offcuts as new stock sheets for future projects |

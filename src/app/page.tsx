@@ -15,7 +15,6 @@ import { useLayoutStore } from '@/store/useLayoutStore';
 import { useHistoryStore } from '@/store/useHistoryStore';
 import { useSaveStatusStore } from '@/store/useSaveStatusStore';
 import { useOptimizer } from '@/hooks/useOptimizer';
-import { Button } from '@/components/ui/button';
 import { Scissors, Undo2, Redo2 } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
