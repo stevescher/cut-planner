@@ -4,6 +4,7 @@ import { Solution, StockSheet } from '@/lib/optimizer/types';
 import { formatDisplay, unitSuffix } from '@/lib/fractions';
 import { useProjectStore } from '@/store/useProjectStore';
 import { useChecklistStore } from '@/store/useChecklistStore';
+import { PrintCutSheet } from './PrintCutSheet';
 
 interface CutChecklistProps {
   solution: Solution;
@@ -17,18 +18,21 @@ export function CutChecklist({ solution, stockSheets }: CutChecklistProps) {
   const suffix = unitSuffix(units);
   return (
     <div className="p-6 space-y-6 print:p-0">
-      <div className="print:hidden space-y-2">
+      {/* On-screen interactive checklist. Hidden when printing — the print path
+          renders PrintCutSheet (the ordered rip/crosscut cut sequence) instead. */}
+      <div className="print:hidden space-y-6">
+      <div className="space-y-2">
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-semibold">Shop Checklist</h3>
           <button
             onClick={() => window.print()}
             className="px-3 py-1.5 text-sm bg-foreground text-background rounded-md hover:opacity-90"
           >
-            Print
+            Print Cut Sheet
           </button>
         </div>
         <p className="text-sm text-muted-foreground">
-          Take this list to the shop and check off each piece as you cut it. Organized by sheet so you can work through one sheet at a time.
+          Take this list to the shop and check off each piece as you cut it. Organized by sheet so you can work through one sheet at a time. Printing produces an ordered rip/crosscut cut sequence per sheet.
         </p>
       </div>
 
@@ -109,6 +113,10 @@ export function CutChecklist({ solution, stockSheets }: CutChecklistProps) {
           </ul>
         </div>
       )}
+      </div>
+
+      {/* Print-only artifact: ordered cut sequence + finished pieces per sheet. */}
+      <PrintCutSheet solution={solution} stockSheets={stockSheets} />
     </div>
   );
 }

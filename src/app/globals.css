@@ -292,4 +292,18 @@
     width: 100% !important;
     margin: 0 !important;
   }
+
+  /* Print cut sheet (OPUS-394): force ink-friendly black-on-white and break
+     each sheet onto its own page so the shop can work one board per page. */
+  .cut-sheet-print {
+    color: #000 !important;
+  }
+  .cut-sheet-page {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .cut-sheet-page + .cut-sheet-page {
+    break-before: page;
+    page-break-before: always;
+  }
 }
