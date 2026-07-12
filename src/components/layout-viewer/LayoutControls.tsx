@@ -2,7 +2,7 @@
 
 import { useViewStore, ViewMode } from '@/store/useViewStore';
 import { useDragStore } from '@/store/useDragStore';
-import { Tag, ListOrdered, Unlock, Palette, Ruler } from 'lucide-react';
+import { Tag, ListOrdered, Unlock, Palette, Ruler, Wind } from 'lucide-react';
 
 function ToggleBtn({
   active, onClick, title, icon: Icon, label,
@@ -32,7 +32,7 @@ const VIEW_MODES: { value: ViewMode; label: string; title: string }[] = [
 ];
 
 export function LayoutControls() {
-  const { showLabels, viewMode, showCutSequence, showEdgeDims, toggleLabels, setViewMode, toggleCutSequence, toggleEdgeDims } = useViewStore();
+  const { showLabels, viewMode, showCutSequence, showEdgeDims, showGrain, toggleLabels, setViewMode, toggleCutSequence, toggleEdgeDims, toggleGrain } = useViewStore();
   const { pinnedPieces, clearPins } = useDragStore();
   const pinnedCount = pinnedPieces.size;
 
@@ -41,6 +41,7 @@ export function LayoutControls() {
       <ToggleBtn active={showLabels} onClick={toggleLabels} title="Toggle piece labels" icon={Tag} label="Labels" />
       <ToggleBtn active={showEdgeDims} onClick={toggleEdgeDims} title="Show dimensions on each piece edge" icon={Ruler} label="Dimensions" />
       <ToggleBtn active={showCutSequence} onClick={toggleCutSequence} title="Toggle cut sequence numbers" icon={ListOrdered} label="Cuts" />
+      <ToggleBtn active={showGrain} onClick={toggleGrain} title="Show grain direction on pieces and flag grain mismatches" icon={Wind} label="Grain" />
 
       {/* View mode segmented control */}
       <div className="flex items-center rounded-lg bg-slate-100 p-0.5 gap-px" title="View mode">

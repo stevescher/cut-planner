@@ -151,7 +151,7 @@ export function StockSheetForm() {
             </div>
           </div>
 
-          {/* Row 3: price per sheet (optional) */}
+          {/* Row 3: price per sheet + grain direction (both optional) */}
           <div className="grid grid-cols-3 gap-2">
             <div className="col-span-1">
               <label className="field-label">Price / sheet</label>
@@ -160,6 +160,29 @@ export function StockSheetForm() {
                 onChange={(v) => updateStockSheet(sheet.id, { pricePerSheet: v })}
                 aria-label={`${sheet.label || `Sheet ${idx + 1}`} price per sheet`}
               />
+            </div>
+            <div className="col-span-2">
+              <label className="field-label">Grain direction</label>
+              <div className="flex rounded-lg bg-slate-100 p-0.5 gap-px h-9">
+                {(['length', 'width'] as const).map((dir) => {
+                  const active = (sheet.grainDirection ?? 'length') === dir;
+                  return (
+                    <button
+                      key={dir}
+                      type="button"
+                      onClick={() => updateStockSheet(sheet.id, { grainDirection: dir })}
+                      aria-pressed={active}
+                      aria-label={`${sheet.label || `Sheet ${idx + 1}`} grain along ${dir}`}
+                      className={[
+                        'flex-1 rounded-md text-xs font-semibold capitalize transition-all',
+                        active ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700',
+                      ].join(' ')}
+                    >
+                      {dir}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
 

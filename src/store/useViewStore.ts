@@ -11,12 +11,14 @@ interface ViewState {
   viewMode: ViewMode;
   showCutSequence: boolean;
   showEdgeDims: boolean;
+  showGrain: boolean;
   zoom: number;
 
   toggleLabels: () => void;
   setViewMode: (mode: ViewMode) => void;
   toggleCutSequence: () => void;
   toggleEdgeDims: () => void;
+  toggleGrain: () => void;
   setZoom: (zoom: number) => void;
 }
 
@@ -25,11 +27,13 @@ export const useViewStore = create<ViewState>((set) => ({
   viewMode: 'color',
   showCutSequence: false,
   showEdgeDims: false,
+  showGrain: false,
   zoom: 1.0,
 
   toggleLabels: () => set((s) => ({ showLabels: !s.showLabels })),
   setViewMode: (mode) => set({ viewMode: mode }),
   toggleCutSequence: () => set((s) => ({ showCutSequence: !s.showCutSequence })),
   toggleEdgeDims: () => set((s) => ({ showEdgeDims: !s.showEdgeDims })),
+  toggleGrain: () => set((s) => ({ showGrain: !s.showGrain })),
   setZoom: (zoom) => set({ zoom: Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoom)) }),
 }));

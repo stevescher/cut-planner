@@ -8,6 +8,7 @@ import { useLayoutStore } from '@/store/useLayoutStore';
 import { useHistoryStore } from '@/store/useHistoryStore';
 import { getColor } from '@/lib/colors';
 import { formatDisplay, unitSuffix } from '@/lib/fractions';
+import { pieceGrainAxis, sheetGrainAxis, isGrainMismatch } from '@/lib/grain';
 import { useProjectStore } from '@/store/useProjectStore';
 import { deriveCutSequenceFromPlacements } from '@/lib/optimizer/reoptimize';
 import { Maximize2 } from 'lucide-react';
@@ -29,7 +30,7 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
   // sheetKey, different scale) don't collide on clipPath ids. Strip colons —
   // React's useId output contains them and they're unsafe in url(#id) refs.
   const uid = useId().replace(/:/g, '');
-  const { showLabels, viewMode, showCutSequence, showEdgeDims, zoom } = useViewStore();
+  const { showLabels, viewMode, showCutSequence, showEdgeDims, showGrain, zoom } = useViewStore();
   const { units, panels } = useProjectStore();
   const fmt = (v: number) => formatDisplay(v, units);
   const sfx = unitSuffix(units);
@@ -334,6 +335,28 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
       >
+        {/* Grain-direction hatch patterns — parallel lines running ALONG the
+            grain axis. Horizontal lines = grain runs left-right (X); vertical
+            lines = grain runs top-bottom (Y). Pattern (not color) carries the
+            direction, so it stays colorblind-safe. A separate amber pattern
+            marks pieces whose grain is perpendicular to the sheet grain. */}
+        {showGrain && (
+          <defs>
+            <pattern id={`grain-x-${uid}`} width={7} height={7} patternUnits="userSpaceOnUse">
+              <line x1={0} y1={3.5} x2={7} y2={3.5} stroke="#1e293b" strokeWidth={0.75} opacity={0.28} />
+            </pattern>
+            <pattern id={`grain-y-${uid}`} width={7} height={7} patternUnits="userSpaceOnUse">
+              <line x1={3.5} y1={0} x2={3.5} y2={7} stroke="#1e293b" strokeWidth={0.75} opacity={0.28} />
+            </pattern>
+            <pattern id={`grain-mismatch-x-${uid}`} width={7} height={7} patternUnits="userSpaceOnUse">
+              <line x1={0} y1={3.5} x2={7} y2={3.5} stroke="#b45309" strokeWidth={1} opacity={0.6} />
+            </pattern>
+            <pattern id={`grain-mismatch-y-${uid}`} width={7} height={7} patternUnits="userSpaceOnUse">
+              <line x1={3.5} y1={0} x2={3.5} y2={7} stroke="#b45309" strokeWidth={1} opacity={0.6} />
+            </pattern>
+          </defs>
+        )}
+
         {/* Sheet background */}
         <rect
           x={PADDING} y={PADDING}
@@ -342,6 +365,47 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
           stroke="#cbd5e1"
           strokeWidth={1.5}
         />
+
+        {/* Sheet grain indicator — a double-headed arrow along the sheet grain
+            axis, anchored just inside the top-left of the sheet, with a "grain"
+            label. Tells the woodworker which way the stock grain runs. */}
+        {showGrain && (() => {
+          const axis = sheetGrainAxis(stockSheet);
+          const ox = PADDING + 14;
+          const oy = PADDING + 14;
+          const len = 34;
+          const x2 = axis === 'x' ? ox + len : ox;
+          const y2 = axis === 'x' ? oy : oy + len;
+          return (
+            <g aria-hidden style={{ pointerEvents: 'none' }}>
+              <line
+                x1={ox} y1={oy} x2={x2} y2={y2}
+                stroke="#475569" strokeWidth={1.5}
+                markerStart={`url(#grain-arrow-start-${uid})`}
+                markerEnd={`url(#grain-arrow-end-${uid})`}
+              />
+              <text
+                x={axis === 'x' ? ox + len / 2 : ox + 6}
+                y={axis === 'x' ? oy - 5 : oy + len / 2}
+                textAnchor={axis === 'x' ? 'middle' : 'start'}
+                dominantBaseline={axis === 'x' ? 'auto' : 'middle'}
+                fill="#64748b" fontSize={8} fontWeight={600}
+              >
+                grain
+              </text>
+              <defs>
+                <marker id={`grain-arrow-end-${uid}`} markerWidth={6} markerHeight={6}
+                  refX={5} refY={3} orient="auto">
+                  <path d="M0,0 L6,3 L0,6 Z" fill="#475569" />
+                </marker>
+                <marker id={`grain-arrow-start-${uid}`} markerWidth={6} markerHeight={6}
+                  refX={1} refY={3} orient="auto">
+                  <path d="M6,0 L0,3 L6,6 Z" fill="#475569" />
+                </marker>
+              </defs>
+            </g>
+          );
+        })()}
 
         {/* Trim areas */}
         {stockSheet.trimTop > 0 && (
@@ -410,6 +474,12 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
           const rotateBtnY = smallPiece ? py - rotateBtnSize - 2 : py + ph - rotateBtnSize - 3;
           const rotationLocked = panels.find(pl => pl.id === p.panelId)?.lockRotation ?? false;
 
+          const grainAxis = pieceGrainAxis(p);
+          const grainMismatch = isGrainMismatch(p, stockSheet, rotationLocked);
+          const grainPatternId = grainMismatch
+            ? `grain-mismatch-${grainAxis}-${uid}`
+            : `grain-${grainAxis}-${uid}`;
+
           return (
             <g
               key={`${p.panelId}-${i}`}
@@ -423,6 +493,33 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
                 strokeWidth={strokeWidth}
                 rx={2}
               />
+
+              {/* Grain hatch overlay — directional lines fill the piece along its
+                  grain axis; amber when the grain is perpendicular to the sheet
+                  grain (a mismatch worth catching before cutting). */}
+              {showGrain && (
+                <rect
+                  x={px} y={py} width={pw} height={ph}
+                  fill={`url(#${grainPatternId})`}
+                  rx={2}
+                  aria-hidden
+                  style={{ pointerEvents: 'none' }}
+                />
+              )}
+
+              {/* Grain-mismatch flag — amber ⚠ badge, bottom-right corner */}
+              {showGrain && grainMismatch && pw >= 16 && ph >= 16 && (
+                <g aria-hidden style={{ pointerEvents: 'none' }}>
+                  <circle cx={px + pw - 9} cy={py + ph - 9} r={7} fill="#b45309" />
+                  <text
+                    x={px + pw - 9} y={py + ph - 9}
+                    textAnchor="middle" dominantBaseline="central"
+                    fill="white" fontSize={9} fontWeight="bold"
+                  >
+                    ⚠
+                  </text>
+                </g>
+              )}
 
               {/* Rotate button — bottom-left corner (or above piece if too small) */}
               {rotationLocked ? (
@@ -630,6 +727,21 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
           Cut sequence is approximate — pieces are not in a guillotine-valid layout. Amber cuts may pass through a piece; re-optimize to restore a valid sequence.
         </p>
       )}
+
+      {/* ── Grain mismatch notice ───────────────────────────────────────── */}
+      {showGrain && (() => {
+        const mismatches = sheetLayout.placements.filter((p) => {
+          const locked = panels.find((pl) => pl.id === p.panelId)?.lockRotation ?? false;
+          return isGrainMismatch(p, stockSheet, locked);
+        }).length;
+        if (mismatches === 0) return null;
+        return (
+          <p className="mt-1 text-xs text-amber-700 flex items-center gap-1">
+            <span aria-hidden>⚠</span>
+            {mismatches} piece{mismatches !== 1 ? 's' : ''} placed cross-grain (grain runs perpendicular to the sheet grain). Rotate to align if grain direction matters for this cut.
+          </p>
+        );
+      })()}
 
       {/* ── Piece legend (deduplicated) ──────────────────────────────────── */}
       {(() => {

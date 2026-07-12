@@ -90,4 +90,35 @@ describe('loadFromLocalStorage validation + migration', () => {
     localStorage.setItem('cut-planner-project', JSON.stringify(p));
     expect(loadFromLocalStorage()).toBeNull();
   });
+
+  it('round-trips an optional grainDirection on a stock sheet', () => {
+    const p = baseProject();
+    p.stockSheets[0].grainDirection = 'width';
+    localStorage.setItem('cut-planner-project', JSON.stringify(p));
+    expect(loadFromLocalStorage()?.stockSheets[0].grainDirection).toBe('width');
+  });
+
+  it('accepts a stock sheet with no grainDirection (optional)', () => {
+    expect(saveToLocalStorage(baseProject())).toBe(true);
+    expect(loadFromLocalStorage()?.stockSheets[0].grainDirection).toBeUndefined();
+  });
+
+  it('rejects an unknown grainDirection value', () => {
+    const p = baseProject();
+    (p.stockSheets[0] as unknown as Record<string, unknown>).grainDirection = 'diagonal';
+    localStorage.setItem('cut-planner-project', JSON.stringify(p));
+    expect(loadFromLocalStorage()).toBeNull();
+  });
+
+  it('round-trips an optional pricePerSheet and rejects an out-of-range one', () => {
+    const p = baseProject();
+    p.stockSheets[0].pricePerSheet = 42.5;
+    localStorage.setItem('cut-planner-project', JSON.stringify(p));
+    expect(loadFromLocalStorage()?.stockSheets[0].pricePerSheet).toBe(42.5);
+
+    const bad = baseProject();
+    (bad.stockSheets[0] as unknown as Record<string, unknown>).pricePerSheet = 2_000_000;
+    localStorage.setItem('cut-planner-project', JSON.stringify(bad));
+    expect(loadFromLocalStorage()).toBeNull();
+  });
 });

@@ -43,6 +43,9 @@ function validateProjectData(data: unknown): data is ProjectData {
     // pricePerSheet is optional; reject only a wrong type or an out-of-range value.
     if (sheet.pricePerSheet !== undefined &&
         (!isFiniteNonNegative(sheet.pricePerSheet) || (sheet.pricePerSheet as number) > 1_000_000)) return false;
+    // grainDirection is optional; accept only the two known values.
+    if (sheet.grainDirection !== undefined &&
+        sheet.grainDirection !== 'length' && sheet.grainDirection !== 'width') return false;
   }
 
   // Accept missing units for backwards compatibility with pre-units saves; default to 'imperial'

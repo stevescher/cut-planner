@@ -11,6 +11,12 @@ export interface StockSheet {
   trimLeft: number;
   /** Optional material cost per sheet (display-only, plain number). Undefined = unpriced. */
   pricePerSheet?: number;
+  /**
+   * Direction the wood grain runs on this stock sheet.
+   * 'length' (default) = along the sheet's length axis; 'width' = along width.
+   * Used only for the grain-direction overlay; the optimizer is unaffected.
+   */
+  grainDirection?: 'length' | 'width';
 }
 
 /** A required panel/part from user input */
