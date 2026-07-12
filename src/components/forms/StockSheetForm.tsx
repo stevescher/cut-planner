@@ -38,7 +38,7 @@ function PriceInput({
     <div className="relative">
       <span
         aria-hidden
-        className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-slate-400"
+        className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-muted-foreground"
       >
         $
       </span>
@@ -106,7 +106,7 @@ export function StockSheetForm() {
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 text-slate-400 hover:text-red-500 hover:bg-red-50 shrink-0"
+              className="h-8 w-8 text-muted-foreground hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 shrink-0"
               onClick={() => removeStockSheet(sheet.id)}
               disabled={stockSheets.length <= 1}
             >
@@ -163,7 +163,7 @@ export function StockSheetForm() {
             </div>
             <div className="col-span-2">
               <label className="field-label">Grain direction</label>
-              <div className="flex rounded-lg bg-slate-100 p-0.5 gap-px h-9">
+              <div className="flex rounded-lg bg-muted p-0.5 gap-px h-9">
                 {(['length', 'width'] as const).map((dir) => {
                   const active = (sheet.grainDirection ?? 'length') === dir;
                   return (
@@ -175,7 +175,7 @@ export function StockSheetForm() {
                       aria-label={`${sheet.label || `Sheet ${idx + 1}`} grain along ${dir}`}
                       className={[
                         'flex-1 rounded-md text-xs font-semibold capitalize transition-all',
-                        active ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700',
+                        active ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
                       ].join(' ')}
                     >
                       {dir}
@@ -189,7 +189,7 @@ export function StockSheetForm() {
           {/* Edge trim toggle */}
           <button
             onClick={() => setExpandedTrim(expandedTrim === sheet.id ? null : sheet.id)}
-            className="flex items-center gap-1.5 text-xs font-medium text-slate-400 hover:text-indigo-500 transition-colors"
+            className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-primary transition-colors"
           >
             {expandedTrim === sheet.id ? (
               <ChevronUp className="h-3 w-3" />
@@ -200,7 +200,7 @@ export function StockSheetForm() {
           </button>
 
           {expandedTrim === sheet.id && (
-            <div className="pt-1 border-t border-slate-100 space-y-2">
+            <div className="pt-1 border-t border-border space-y-2">
               <div className="grid grid-cols-4 gap-2">
                 {(['trimTop', 'trimRight', 'trimBottom', 'trimLeft'] as const).map((side) => (
                   <div key={side}>
@@ -218,7 +218,7 @@ export function StockSheetForm() {
               </div>
               {(sheet.trimLeft + sheet.trimRight >= sheet.length ||
                 sheet.trimTop + sheet.trimBottom >= sheet.width) && (
-                <p className="text-xs text-red-600 font-medium">
+                <p className="text-xs text-red-600 dark:text-red-400 font-medium">
                   ⚠ Trim exceeds sheet dimensions — no usable area remains.
                 </p>
               )}
@@ -229,8 +229,8 @@ export function StockSheetForm() {
 
       <button
         onClick={() => addStockSheet()}
-        className="w-full h-9 rounded-xl border-2 border-dashed border-slate-300 text-xs font-semibold text-slate-400
-                   hover:border-indigo-400 hover:text-indigo-500 hover:bg-indigo-50/50
+        className="w-full h-9 rounded-xl border-2 border-dashed border-border text-xs font-semibold text-muted-foreground
+                   hover:border-primary hover:text-primary hover:bg-accent
                    transition-all flex items-center justify-center gap-1.5"
       >
         <Plus className="h-3.5 w-3.5" />

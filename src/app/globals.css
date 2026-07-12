@@ -96,6 +96,111 @@
   --sidebar-accent-foreground: oklch(0.45 0.18 264);
   --sidebar-border: oklch(0.906 0.008 264);
   --sidebar-ring: oklch(0.511 0.231 264);
+
+  /* App-surface tokens — used in place of hardcoded slate/white literals so the
+     whole UI (headers, sidebar cards, canvas, checklist) themes in one place. */
+  --surface-app: oklch(1 0 0);                     /* page background */
+  --surface-panel: oklch(1 0 0);                   /* cards / headers / canvas bg */
+  --surface-inset: oklch(0.975 0.006 264);         /* subtle inset (canvas sheet, wells) */
+  --surface-hover: oklch(0.965 0.006 264);         /* hover fill on ghost controls */
+  --hairline: oklch(0.906 0.008 264);              /* borders / dividers (slate-200) */
+  --text-strong: oklch(0.22 0.012 264);            /* headings (slate-800) */
+  --text-muted: oklch(0.52 0.016 264);             /* secondary text (slate-500) */
+  --text-faint: oklch(0.62 0.014 264);             /* tertiary text (slate-400) */
+
+  /* Canvas literals — resolved from CSS vars so SVG can theme too. */
+  --canvas-sheet: #f8fafc;                         /* stock-sheet fill */
+  --canvas-sheet-outline-mode: #fafafa;
+  --canvas-sheet-border: #cbd5e1;
+  --canvas-piece-label: #ffffff;                   /* label text on colored pieces */
+  --canvas-piece-dim: rgba(255,255,255,0.8);
+  --canvas-trim: #fee2e2;                          /* trim overlay */
+  --canvas-trim-opacity: 0.5;
+  --canvas-dim-label: #94a3b8;                     /* sheet dimension labels */
+  --canvas-piece-stroke: rgba(255,255,255,0.6);
+  --canvas-grain: #1e293b;                          /* grain hatch on pieces */
+  --canvas-grain-mismatch: #b45309;                 /* cross-grain hatch/flag (amber) */
+  --canvas-outline-fill: #ffffff;                   /* outline-mode piece fill */
+  --canvas-outline-stroke: #1e293b;                 /* outline-mode piece stroke */
+  --canvas-outline-label: #1e293b;
+  --canvas-outline-dim: #64748b;
+  --canvas-outline-index: #475569;
+  --canvas-outline-edgedim: #334155;
+  --canvas-mono-stroke: #555555;
+  --canvas-mono-label: #000000;
+  --canvas-mono-dim: #555555;
+  --canvas-grain-arrow: #475569;                    /* sheet grain arrow */
+  --canvas-grain-arrow-label: #64748b;
+}
+
+/* ─── Dark theme ───────────────────────────────────────────────────────────── */
+.dark {
+  --background: oklch(0.2 0.015 264);
+  --foreground: oklch(0.94 0.006 264);
+
+  --card: oklch(0.245 0.017 264);
+  --card-foreground: oklch(0.94 0.006 264);
+  --popover: oklch(0.245 0.017 264);
+  --popover-foreground: oklch(0.94 0.006 264);
+
+  --primary: oklch(0.62 0.19 264);                 /* lifted indigo for dark bg */
+  --primary-foreground: oklch(1 0 0);
+
+  --secondary: oklch(0.29 0.018 264);
+  --secondary-foreground: oklch(0.9 0.01 264);
+
+  --muted: oklch(0.29 0.018 264);
+  --muted-foreground: oklch(0.7 0.014 264);
+
+  --accent: oklch(0.34 0.06 264);
+  --accent-foreground: oklch(0.85 0.09 264);
+
+  --destructive: oklch(0.63 0.2 27.325);
+
+  --border: oklch(0.34 0.014 264);
+  --input: oklch(0.34 0.014 264);
+  --ring: oklch(0.62 0.19 264);
+
+  --sidebar: oklch(0.225 0.016 264);
+  --sidebar-foreground: oklch(0.94 0.006 264);
+  --sidebar-primary: oklch(0.62 0.19 264);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.34 0.06 264);
+  --sidebar-accent-foreground: oklch(0.85 0.09 264);
+  --sidebar-border: oklch(0.34 0.014 264);
+  --sidebar-ring: oklch(0.62 0.19 264);
+
+  --surface-app: oklch(0.2 0.015 264);
+  --surface-panel: oklch(0.245 0.017 264);
+  --surface-inset: oklch(0.28 0.017 264);
+  --surface-hover: oklch(0.31 0.018 264);
+  --hairline: oklch(0.34 0.014 264);
+  --text-strong: oklch(0.95 0.006 264);
+  --text-muted: oklch(0.72 0.014 264);
+  --text-faint: oklch(0.6 0.014 264);
+
+  --canvas-sheet: #1e2433;
+  --canvas-sheet-outline-mode: #232838;
+  --canvas-sheet-border: #3b4252;
+  --canvas-piece-label: #f1f5f9;
+  --canvas-piece-dim: rgba(241,245,249,0.75);
+  --canvas-trim: #7f1d1d;
+  --canvas-trim-opacity: 0.45;
+  --canvas-dim-label: #64748b;
+  --canvas-piece-stroke: rgba(255,255,255,0.35);
+  --canvas-grain: #e2e8f0;                          /* light hatch on dark-tinted pieces */
+  --canvas-grain-mismatch: #fbbf24;
+  --canvas-outline-fill: #2a3140;
+  --canvas-outline-stroke: #cbd5e1;
+  --canvas-outline-label: #e2e8f0;
+  --canvas-outline-dim: #94a3b8;
+  --canvas-outline-index: #94a3b8;
+  --canvas-outline-edgedim: #cbd5e1;
+  --canvas-mono-stroke: #94a3b8;
+  --canvas-mono-label: #f1f5f9;
+  --canvas-mono-dim: #cbd5e1;
+  --canvas-grain-arrow: #94a3b8;
+  --canvas-grain-arrow-label: #94a3b8;
 }
 
 @layer base {
@@ -123,8 +228,8 @@
 
 /* Section card */
 .form-card {
-  background: white;
-  border: 1.5px solid oklch(0.906 0.008 264);
+  background: var(--surface-panel);
+  border: 1.5px solid var(--hairline);
   border-radius: calc(var(--radius) * 1.6);
   padding: 1rem;
   box-shadow: 0 1px 3px oklch(0.18 0.01 264 / 0.05),
@@ -140,7 +245,7 @@
   border-left: 3px solid oklch(0.511 0.231 264);
   font-size: 0.8rem;
   font-weight: 700;
-  color: oklch(0.18 0.01 264);
+  color: var(--text-strong);
   letter-spacing: -0.01em;
 }
 
@@ -151,7 +256,7 @@
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: oklch(0.52 0.016 264);
+  color: var(--text-muted);
   margin-bottom: 0.25rem;
 }
 

@@ -20,8 +20,8 @@ export function UnitToggle() {
 
   return (
     <div className="flex items-center justify-between">
-      <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Units</span>
-      <div className="flex items-center rounded-lg bg-white border border-slate-200 p-0.5 gap-px shadow-sm">
+      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Units</span>
+      <div className="flex items-center rounded-lg bg-card border border-border p-0.5 gap-px shadow-sm">
         {(['imperial', 'metric'] as Units[]).map((u) => (
           <button
             key={u}
@@ -30,7 +30,7 @@ export function UnitToggle() {
               'px-3 h-7 rounded-md text-xs font-semibold transition-all',
               units === u
                 ? 'bg-indigo-600 text-white shadow-sm'
-                : 'text-slate-500 hover:text-slate-700',
+                : 'text-muted-foreground hover:text-foreground',
             ].join(' ')}
           >
             {u === 'imperial' ? 'Imperial' : 'Metric'}

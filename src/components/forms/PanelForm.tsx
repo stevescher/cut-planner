@@ -32,8 +32,8 @@ export function PanelForm() {
         {panels.map((panel, idx) => (
           <div
             key={panel.id}
-            className="bg-white rounded-lg border border-slate-200 px-2 py-1.5
-                       hover:border-indigo-200 transition-colors"
+            className="bg-card rounded-lg border border-border px-2 py-1.5
+                       hover:border-primary transition-colors"
           >
             {/* Label — full width so long names aren't clipped */}
             <div className="flex items-center gap-2">
@@ -85,8 +85,8 @@ export function PanelForm() {
               title={panel.lockRotation ? 'Rotation locked — click to allow' : 'Click to lock grain direction'}
               className={`h-6 w-6 rounded flex items-center justify-center transition-colors
                 ${panel.lockRotation
-                  ? 'text-amber-600 bg-amber-50 hover:bg-amber-100'
-                  : 'text-slate-300 hover:text-slate-500 hover:bg-slate-50'}`}
+                  ? 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted'}`}
             >
               {panel.lockRotation
                 ? <Lock className="h-3 w-3" />
@@ -95,8 +95,8 @@ export function PanelForm() {
             <button
               onClick={() => removePanel(panel.id)}
               disabled={panels.length <= 1}
-              className="h-6 w-6 rounded flex items-center justify-center text-slate-300
-                         hover:text-red-400 hover:bg-red-50 disabled:opacity-30
+              className="h-6 w-6 rounded flex items-center justify-center text-muted-foreground
+                         hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 disabled:opacity-30
                          transition-colors"
             >
               <Trash2 className="h-3 w-3" />
@@ -108,7 +108,7 @@ export function PanelForm() {
 
       {/* Import panel (inline) */}
       {showImport && (
-        <div className="rounded-xl border border-indigo-200 bg-indigo-50/30 p-3 mt-1">
+        <div className="rounded-xl border border-border bg-muted/30 p-3 mt-1">
           <PanelImport onClose={() => setShowImport(false)} />
         </div>
       )}
@@ -118,8 +118,8 @@ export function PanelForm() {
         <div className="flex gap-2 mt-1">
           <button
             onClick={() => addPanel()}
-            className="flex-1 h-9 rounded-xl border-2 border-dashed border-slate-300 text-xs font-semibold text-slate-400
-                       hover:border-indigo-400 hover:text-indigo-500 hover:bg-indigo-50/50
+            className="flex-1 h-9 rounded-xl border-2 border-dashed border-border text-xs font-semibold text-muted-foreground
+                       hover:border-primary hover:text-primary hover:bg-accent
                        transition-all flex items-center justify-center gap-1.5"
           >
             <Plus className="h-3.5 w-3.5" />
@@ -128,8 +128,8 @@ export function PanelForm() {
           <button
             onClick={() => setShowImport(true)}
             title="Import panels from CSV"
-            className="h-9 px-3 rounded-xl border-2 border-dashed border-slate-300 text-xs font-semibold text-slate-400
-                       hover:border-indigo-400 hover:text-indigo-500 hover:bg-indigo-50/50
+            className="h-9 px-3 rounded-xl border-2 border-dashed border-border text-xs font-semibold text-muted-foreground
+                       hover:border-primary hover:text-primary hover:bg-accent
                        transition-all flex items-center justify-center gap-1.5"
           >
             <Upload className="h-3.5 w-3.5" />

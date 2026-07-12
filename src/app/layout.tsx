@@ -22,8 +22,16 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // No-flash theme script: set the `dark` class before first paint so a
+  // dark-mode user never sees a white flash. Reads the stored preference,
+  // falling back to the OS setting. Mirrors the logic in useThemeStore.
+  const themeScript = `(function(){try{var p=localStorage.getItem('cut-planner-theme');var d=p==='dark'||((p===null||p==='system')&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d);}catch(e){}})();`;
+
   return (
-    <html lang="en" className={`${jakarta.variable} h-full antialiased`}>
+    <html lang="en" className={`${jakarta.variable} h-full antialiased`} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <PHProvider>
         <body className="min-h-full flex flex-col">
           <Suspense>

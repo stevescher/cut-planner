@@ -17,6 +17,7 @@ import { useSaveStatusStore } from '@/store/useSaveStatusStore';
 import { useOptimizer } from '@/hooks/useOptimizer';
 import { Scissors, Undo2, Redo2 } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 export default function Home() {
   useAutoSave();
@@ -81,10 +82,9 @@ export default function Home() {
     panels.some((p) => p.length > 0 && p.width > 0);
 
   return (
-    <div className="flex flex-col h-screen bg-white">
+    <div className="flex flex-col h-screen bg-background">
       {/* ── Header ─────────────────────────────────────────────────────── */}
-      <header className="h-12 border-b border-slate-200 px-4 flex items-center justify-between bg-white shrink-0 z-10"
-        style={{ boxShadow: '0 1px 0 rgba(0,0,0,0.06)' }}>
+      <header className="h-12 border-b border-border px-4 flex items-center justify-between bg-card shrink-0 z-10 shadow-[0_1px_0_rgba(0,0,0,0.06)]">
         <div className="flex items-center gap-3">
           {/* Logo mark */}
           <div className="flex items-center gap-2">
@@ -92,15 +92,15 @@ export default function Home() {
               style={{ background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)' }}>
               <Scissors className="h-3.5 w-3.5 text-white" />
             </div>
-            <span className="font-extrabold text-slate-900 text-sm tracking-tight">
-              Cut <span className="font-medium text-slate-400">Planner</span>
+            <span className="font-extrabold text-foreground text-sm tracking-tight">
+              Cut <span className="font-medium text-muted-foreground">Planner</span>
             </span>
           </div>
-          <div className="w-px h-4 bg-slate-200" />
+          <div className="w-px h-4 bg-border" />
           <ProjectMenu />
           {solutions.length > 0 && (
             <>
-              <div className="w-px h-4 bg-slate-200" />
+              <div className="w-px h-4 bg-border" />
               <ExportMenu />
             </>
           )}
@@ -114,8 +114,8 @@ export default function Home() {
                 disabled={!canUndo}
                 title="Undo (⌘Z)"
                 aria-label="Undo"
-                className="h-7 w-7 rounded-lg flex items-center justify-center text-slate-500
-                           hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground
+                           hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
               >
                 <Undo2 className="h-3.5 w-3.5" />
               </button>
@@ -124,15 +124,17 @@ export default function Home() {
                 disabled={!canRedo}
                 title="Redo (⌘⇧Z)"
                 aria-label="Redo"
-                className="h-7 w-7 rounded-lg flex items-center justify-center text-slate-500
-                           hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground
+                           hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
               >
                 <Redo2 className="h-3.5 w-3.5" />
               </button>
-              <div className="w-px h-4 bg-slate-200" />
+              <div className="w-px h-4 bg-border" />
               <LayoutControls />
             </>
           )}
+          <div className="w-px h-4 bg-border" />
+          <ThemeToggle />
         </div>
       </header>
 
@@ -140,7 +142,7 @@ export default function Home() {
       {saveFailed && (
         <div
           role="alert"
-          className="shrink-0 bg-amber-50 border-b border-amber-200 text-amber-800 text-xs px-4 py-2 text-center"
+          className="shrink-0 bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-900 text-amber-800 dark:text-amber-300 text-xs px-4 py-2 text-center"
         >
           Autosave failed — your browser storage may be full or disabled. Export your project
           to a file to avoid losing work.
@@ -153,7 +155,7 @@ export default function Home() {
       <div className="flex flex-col md:flex-row flex-1 min-h-0">
 
         {/* ── Sidebar ──────────────────────────────────────────────────── */}
-        <aside className="w-full md:w-[360px] shrink-0 flex flex-col border-b md:border-b-0 md:border-r border-slate-200 max-h-[55vh] md:max-h-none"
+        <aside className="w-full md:w-[360px] shrink-0 flex flex-col border-b md:border-b-0 md:border-r border-border max-h-[55vh] md:max-h-none"
           style={{ background: 'var(--sidebar)' }}>
 
           <ScrollArea className="flex-1">
@@ -163,7 +165,7 @@ export default function Home() {
               <UnitToggle />
 
               {/* Divider */}
-              <div className="border-t border-slate-200/70" />
+              <div className="border-t border-border/70" />
 
               {/* Stock Sheets */}
               <section>
@@ -172,7 +174,7 @@ export default function Home() {
               </section>
 
               {/* Divider */}
-              <div className="border-t border-slate-200/70" />
+              <div className="border-t border-border/70" />
 
               {/* Panels */}
               <section>
@@ -181,7 +183,7 @@ export default function Home() {
               </section>
 
               {/* Divider */}
-              <div className="border-t border-slate-200/70" />
+              <div className="border-t border-border/70" />
 
               {/* Settings */}
               <section>
@@ -193,7 +195,7 @@ export default function Home() {
           </ScrollArea>
 
           {/* ── Optimize CTA ───────────────────────────────────────────── */}
-          <div className="p-4 border-t border-slate-200 bg-white">
+          <div className="p-4 border-t border-border bg-card">
             <button
               className="btn-optimize w-full h-11 rounded-xl text-sm flex items-center justify-center gap-2"
               onClick={optimize}
@@ -206,7 +208,7 @@ export default function Home() {
         </aside>
 
         {/* ── Main viewer ──────────────────────────────────────────────── */}
-        <main className="flex-1 min-w-0 bg-slate-50/50">
+        <main className="flex-1 min-w-0 bg-muted/30">
           <LayoutViewer />
         </main>
 

@@ -21,8 +21,8 @@ export function KerfSetting() {
         />
       </div>
       <div>
-        <p className="text-xs font-medium text-slate-600">Blade kerf</p>
-        <p className="text-[11px] text-slate-400">{hint}</p>
+        <p className="text-xs font-medium text-muted-foreground">Blade kerf</p>
+        <p className="text-[11px] text-muted-foreground">{hint}</p>
       </div>
     </div>
   );

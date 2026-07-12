@@ -207,8 +207,8 @@ export function PanelImport({ onClose }: PanelImportProps) {
     <div className="space-y-3">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <span className="text-sm font-semibold text-slate-700">Import Panels from CSV</span>
-        <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
+        <span className="text-sm font-semibold text-foreground">Import Panels from CSV</span>
+        <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
           <X className="h-4 w-4" />
         </button>
       </div>
@@ -218,13 +218,13 @@ export function PanelImport({ onClose }: PanelImportProps) {
         <div
           onDrop={handleDrop}
           onDragOver={(e) => e.preventDefault()}
-          className="border-2 border-dashed border-slate-300 rounded-xl p-6 text-center
-                     hover:border-indigo-400 hover:bg-indigo-50/30 transition-colors cursor-pointer"
+          className="border-2 border-dashed border-border rounded-xl p-6 text-center
+                     hover:border-primary hover:bg-accent transition-colors cursor-pointer"
           onClick={() => fileRef.current?.click()}
         >
-          <Upload className="h-6 w-6 mx-auto text-slate-400 mb-2" />
-          <p className="text-sm text-slate-600 font-medium">Drop a CSV file here, or click to browse</p>
-          <p className="text-xs text-slate-400 mt-1">Required columns: label, length, width, qty</p>
+          <Upload className="h-6 w-6 mx-auto text-muted-foreground mb-2" />
+          <p className="text-sm text-muted-foreground font-medium">Drop a CSV file here, or click to browse</p>
+          <p className="text-xs text-muted-foreground mt-1">Required columns: label, length, width, qty</p>
           <input
             ref={fileRef}
             type="file"
@@ -238,7 +238,7 @@ export function PanelImport({ onClose }: PanelImportProps) {
       {/* Download template */}
       <button
         onClick={() => downloadTemplate(units)}
-        className="flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-800 transition-colors"
+        className="flex items-center gap-1.5 text-xs text-primary hover:text-primary transition-colors"
       >
         <Download className="h-3.5 w-3.5" />
         Download CSV template
@@ -247,27 +247,27 @@ export function PanelImport({ onClose }: PanelImportProps) {
       {/* Preview */}
       {parsedRows && (
         <>
-          <div className="text-xs text-slate-500">
-            <span className="font-medium text-slate-700">{fileName}</span>
+          <div className="text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">{fileName}</span>
             {' — '}
             {validRows.length} valid row{validRows.length !== 1 ? 's' : ''}
             {errorRows.length > 0 && (
-              <span className="text-red-500 ml-1">
+              <span className="text-red-500 dark:text-red-400 ml-1">
                 , {errorRows.length} error{errorRows.length !== 1 ? 's' : ''}
               </span>
             )}
           </div>
 
           {/* Rows table */}
-          <div className="max-h-48 overflow-y-auto rounded-lg border border-slate-200 text-xs">
+          <div className="max-h-48 overflow-y-auto rounded-lg border border-border text-xs">
             <table className="w-full">
-              <thead className="bg-slate-50 sticky top-0">
+              <thead className="bg-muted sticky top-0">
                 <tr>
-                  <th className="px-2 py-1 text-left text-slate-500 font-medium">#</th>
-                  <th className="px-2 py-1 text-left text-slate-500 font-medium">Label</th>
-                  <th className="px-2 py-1 text-right text-slate-500 font-medium">Length</th>
-                  <th className="px-2 py-1 text-right text-slate-500 font-medium">Width</th>
-                  <th className="px-2 py-1 text-right text-slate-500 font-medium">Qty</th>
+                  <th className="px-2 py-1 text-left text-muted-foreground font-medium">#</th>
+                  <th className="px-2 py-1 text-left text-muted-foreground font-medium">Label</th>
+                  <th className="px-2 py-1 text-right text-muted-foreground font-medium">Length</th>
+                  <th className="px-2 py-1 text-right text-muted-foreground font-medium">Width</th>
+                  <th className="px-2 py-1 text-right text-muted-foreground font-medium">Qty</th>
                   <th className="px-2 py-1" />
                 </tr>
               </thead>
@@ -275,13 +275,13 @@ export function PanelImport({ onClose }: PanelImportProps) {
                 {parsedRows.map((row) => (
                   <tr
                     key={row.rowNum}
-                    className={row.error ? 'bg-red-50' : 'even:bg-slate-50'}
+                    className={row.error ? 'bg-red-50 dark:bg-red-950/40' : 'even:bg-muted'}
                   >
-                    <td className="px-2 py-1 text-slate-400">{row.rowNum}</td>
-                    <td className="px-2 py-1 text-slate-700">{row.label || <span className="text-slate-300 italic">—</span>}</td>
-                    <td className="px-2 py-1 text-right text-slate-700">{row.error && row.length === 0 ? '—' : row.length}</td>
-                    <td className="px-2 py-1 text-right text-slate-700">{row.error && row.width === 0 ? '—' : row.width}</td>
-                    <td className="px-2 py-1 text-right text-slate-700">{row.qty}</td>
+                    <td className="px-2 py-1 text-muted-foreground">{row.rowNum}</td>
+                    <td className="px-2 py-1 text-foreground">{row.label || <span className="text-muted-foreground italic">—</span>}</td>
+                    <td className="px-2 py-1 text-right text-foreground">{row.error && row.length === 0 ? '—' : row.length}</td>
+                    <td className="px-2 py-1 text-right text-foreground">{row.error && row.width === 0 ? '—' : row.width}</td>
+                    <td className="px-2 py-1 text-right text-foreground">{row.qty}</td>
                     <td className="px-2 py-1">
                       {row.error
                         ? <AlertCircle className="h-3 w-3 text-red-400" aria-label={row.error} />
@@ -295,7 +295,7 @@ export function PanelImport({ onClose }: PanelImportProps) {
 
           {/* Error details */}
           {errorRows.length > 0 && (
-            <div className="text-xs text-red-600 space-y-0.5">
+            <div className="text-xs text-red-600 dark:text-red-400 space-y-0.5">
               {errorRows.map((r) => (
                 <div key={r.rowNum}>Row {r.rowNum}: {r.error}</div>
               ))}
@@ -313,7 +313,7 @@ export function PanelImport({ onClose }: PanelImportProps) {
                 onChange={() => setMergeMode('replace')}
                 className="accent-indigo-600"
               />
-              <span className="text-slate-700">Replace existing panels</span>
+              <span className="text-foreground">Replace existing panels</span>
             </label>
             <label className="flex items-center gap-1.5 cursor-pointer">
               <input
@@ -324,7 +324,7 @@ export function PanelImport({ onClose }: PanelImportProps) {
                 onChange={() => setMergeMode('merge')}
                 className="accent-indigo-600"
               />
-              <span className="text-slate-700">Append to existing</span>
+              <span className="text-foreground">Append to existing</span>
             </label>
           </div>
 
@@ -340,8 +340,8 @@ export function PanelImport({ onClose }: PanelImportProps) {
             </button>
             <button
               onClick={() => { setParsedRows(null); setFileName(''); }}
-              className="h-8 px-3 rounded-lg border border-slate-200 text-xs text-slate-600
-                         hover:bg-slate-50 transition-colors"
+              className="h-8 px-3 rounded-lg border border-border text-xs text-muted-foreground
+                         hover:bg-muted transition-colors"
             >
               Back
             </button>

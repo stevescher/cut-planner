@@ -16,7 +16,7 @@ function ToggleBtn({
       title={title}
       className={[
         'h-8 px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all',
-        active ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200',
+        active ? 'bg-indigo-600 text-white shadow-sm' : 'bg-muted text-muted-foreground hover:bg-muted/70',
       ].join(' ')}
     >
       <Icon className="h-3.5 w-3.5" />
@@ -44,8 +44,8 @@ export function LayoutControls() {
       <ToggleBtn active={showGrain} onClick={toggleGrain} title="Show grain direction on pieces and flag grain mismatches" icon={Wind} label="Grain" />
 
       {/* View mode segmented control */}
-      <div className="flex items-center rounded-lg bg-slate-100 p-0.5 gap-px" title="View mode">
-        <Palette className="h-3.5 w-3.5 text-slate-400 mx-1.5" />
+      <div className="flex items-center rounded-lg bg-muted p-0.5 gap-px" title="View mode">
+        <Palette className="h-3.5 w-3.5 text-muted-foreground mx-1.5" />
         {VIEW_MODES.map(({ value, label, title }) => (
           <button
             key={value}
@@ -54,8 +54,8 @@ export function LayoutControls() {
             className={[
               'px-2.5 h-7 rounded-md text-xs font-semibold capitalize transition-all',
               viewMode === value
-                ? 'bg-white text-slate-800 shadow-sm'
-                : 'text-slate-500 hover:text-slate-700',
+                ? 'bg-card text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground',
             ].join(' ')}
           >
             {label}
@@ -65,12 +65,12 @@ export function LayoutControls() {
 
       {pinnedCount > 0 && (
         <>
-          <div className="w-px h-4 bg-slate-200" />
+          <div className="w-px h-4 bg-border" />
           <button
             onClick={clearPins}
             title="Release all anchored pieces"
             className="h-8 px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5
-                       bg-amber-100 text-amber-700 hover:bg-amber-200 transition-all"
+                       bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-900/60 transition-all"
           >
             <Unlock className="h-3.5 w-3.5" />
             Release {pinnedCount}

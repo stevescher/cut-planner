@@ -307,14 +307,14 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <h4 className="text-sm font-semibold text-slate-700">
+        <h4 className="text-sm font-semibold text-foreground">
           Sheet {sheetNumber}
           {stockSheet.label && ` — ${stockSheet.label}`}
-          <span className="text-slate-400 font-normal ml-2">
+          <span className="text-muted-foreground font-normal ml-2">
             ({fmt(sheetW)}{sfx} &times; {fmt(sheetH)}{sfx})
           </span>
         </h4>
-        <span className="text-xs text-slate-400">
+        <span className="text-xs text-muted-foreground">
           Waste: {sheetLayout.wastePercent.toFixed(1)}%
         </span>
       </div>
@@ -328,7 +328,7 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
         viewBox={`0 0 ${svgW} ${svgH}`}
         role="img"
         aria-label={`Cutting diagram for sheet ${sheetNumber}${stockSheet.label ? ` (${stockSheet.label})` : ''}: ${fmt(sheetW)}${sfx} by ${fmt(sheetH)}${sfx}, ${sheetLayout.placements.length} pieces, ${sheetLayout.wastePercent.toFixed(0)}% waste. The Shop List tab lists every piece in an accessible table.`}
-        className="rounded-xl border border-slate-200 bg-white select-none shadow-sm"
+        className="rounded-xl border border-border bg-card select-none shadow-sm"
         // Stop the browser from scrolling/panning the page when a drag starts on
         // a touch device, so panels can actually be dragged on a shop tablet.
         style={{ touchAction: 'none' }}
@@ -343,16 +343,16 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
         {showGrain && (
           <defs>
             <pattern id={`grain-x-${uid}`} width={7} height={7} patternUnits="userSpaceOnUse">
-              <line x1={0} y1={3.5} x2={7} y2={3.5} stroke="#1e293b" strokeWidth={0.75} opacity={0.28} />
+              <line x1={0} y1={3.5} x2={7} y2={3.5} stroke="var(--canvas-grain)" strokeWidth={0.75} opacity={0.28} />
             </pattern>
             <pattern id={`grain-y-${uid}`} width={7} height={7} patternUnits="userSpaceOnUse">
-              <line x1={3.5} y1={0} x2={3.5} y2={7} stroke="#1e293b" strokeWidth={0.75} opacity={0.28} />
+              <line x1={3.5} y1={0} x2={3.5} y2={7} stroke="var(--canvas-grain)" strokeWidth={0.75} opacity={0.28} />
             </pattern>
             <pattern id={`grain-mismatch-x-${uid}`} width={7} height={7} patternUnits="userSpaceOnUse">
-              <line x1={0} y1={3.5} x2={7} y2={3.5} stroke="#b45309" strokeWidth={1} opacity={0.6} />
+              <line x1={0} y1={3.5} x2={7} y2={3.5} stroke="var(--canvas-grain-mismatch)" strokeWidth={1} opacity={0.6} />
             </pattern>
             <pattern id={`grain-mismatch-y-${uid}`} width={7} height={7} patternUnits="userSpaceOnUse">
-              <line x1={3.5} y1={0} x2={3.5} y2={7} stroke="#b45309" strokeWidth={1} opacity={0.6} />
+              <line x1={3.5} y1={0} x2={3.5} y2={7} stroke="var(--canvas-grain-mismatch)" strokeWidth={1} opacity={0.6} />
             </pattern>
           </defs>
         )}
@@ -361,8 +361,8 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
         <rect
           x={PADDING} y={PADDING}
           width={sheetW * scale} height={sheetH * scale}
-          fill={outlineMode ? '#fafafa' : '#f8fafc'}
-          stroke="#cbd5e1"
+          fill={outlineMode ? 'var(--canvas-sheet-outline-mode)' : 'var(--canvas-sheet)'}
+          stroke="var(--canvas-sheet-border)"
           strokeWidth={1.5}
         />
 
@@ -380,7 +380,7 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
             <g aria-hidden style={{ pointerEvents: 'none' }}>
               <line
                 x1={ox} y1={oy} x2={x2} y2={y2}
-                stroke="#475569" strokeWidth={1.5}
+                stroke="var(--canvas-grain-arrow)" strokeWidth={1.5}
                 markerStart={`url(#grain-arrow-start-${uid})`}
                 markerEnd={`url(#grain-arrow-end-${uid})`}
               />
@@ -389,18 +389,18 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
                 y={axis === 'x' ? oy - 5 : oy + len / 2}
                 textAnchor={axis === 'x' ? 'middle' : 'start'}
                 dominantBaseline={axis === 'x' ? 'auto' : 'middle'}
-                fill="#64748b" fontSize={8} fontWeight={600}
+                fill="var(--canvas-grain-arrow-label)" fontSize={8} fontWeight={600}
               >
                 grain
               </text>
               <defs>
                 <marker id={`grain-arrow-end-${uid}`} markerWidth={6} markerHeight={6}
                   refX={5} refY={3} orient="auto">
-                  <path d="M0,0 L6,3 L0,6 Z" fill="#475569" />
+                  <path d="M0,0 L6,3 L0,6 Z" fill="var(--canvas-grain-arrow)" />
                 </marker>
                 <marker id={`grain-arrow-start-${uid}`} markerWidth={6} markerHeight={6}
                   refX={1} refY={3} orient="auto">
-                  <path d="M6,0 L0,3 L6,6 Z" fill="#475569" />
+                  <path d="M6,0 L0,3 L6,6 Z" fill="var(--canvas-grain-arrow)" />
                 </marker>
               </defs>
             </g>
@@ -410,21 +410,21 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
         {/* Trim areas */}
         {stockSheet.trimTop > 0 && (
           <rect x={PADDING} y={PADDING} width={sheetW * scale} height={stockSheet.trimTop * scale}
-            fill="#fee2e2" opacity={0.5} />
+            fill="var(--canvas-trim)" opacity={0.5} />
         )}
         {stockSheet.trimBottom > 0 && (
           <rect x={PADDING} y={PADDING + (sheetH - stockSheet.trimBottom) * scale}
             width={sheetW * scale} height={stockSheet.trimBottom * scale}
-            fill="#fee2e2" opacity={0.5} />
+            fill="var(--canvas-trim)" opacity={0.5} />
         )}
         {stockSheet.trimLeft > 0 && (
           <rect x={PADDING} y={PADDING} width={stockSheet.trimLeft * scale} height={sheetH * scale}
-            fill="#fee2e2" opacity={0.5} />
+            fill="var(--canvas-trim)" opacity={0.5} />
         )}
         {stockSheet.trimRight > 0 && (
           <rect x={PADDING + (sheetW - stockSheet.trimRight) * scale} y={PADDING}
             width={stockSheet.trimRight * scale} height={sheetH * scale}
-            fill="#fee2e2" opacity={0.5} />
+            fill="var(--canvas-trim)" opacity={0.5} />
         )}
 
         {/* ── Pieces ───────────────────────────────────────────────────── */}
@@ -448,23 +448,23 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
           let dimFill: string;
 
           if (outlineMode) {
-            fill = 'white';
-            stroke = pinned ? '#f59e0b' : '#1e293b'; // black outlines
+            fill = 'var(--canvas-outline-fill)';
+            stroke = pinned ? '#f59e0b' : 'var(--canvas-outline-stroke)';
             strokeWidth = pinned ? 2.5 : 1.5;
-            labelFill = '#1e293b';
-            dimFill = '#64748b';
+            labelFill = 'var(--canvas-outline-label)';
+            dimFill = 'var(--canvas-outline-dim)';
           } else if (monoMode) {
             fill = color;
-            stroke = pinned ? '#f59e0b' : '#555';
+            stroke = pinned ? '#f59e0b' : 'var(--canvas-mono-stroke)';
             strokeWidth = pinned ? 2.5 : 1;
-            labelFill = '#000';
-            dimFill = '#555';
+            labelFill = 'var(--canvas-mono-label)';
+            dimFill = 'var(--canvas-mono-dim)';
           } else {
             fill = color;
-            stroke = pinned ? '#f59e0b' : 'rgba(255,255,255,0.6)';
+            stroke = pinned ? '#f59e0b' : 'var(--canvas-piece-stroke)';
             strokeWidth = pinned ? 2.5 : 1;
-            labelFill = '#fff';
-            dimFill = 'rgba(255,255,255,0.8)';
+            labelFill = 'var(--canvas-piece-label)';
+            dimFill = 'var(--canvas-piece-dim)';
           }
 
           const rotateBtnSize = 9;
@@ -580,7 +580,7 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
                 <text
                   x={px + 5} y={py + 5}
                   textAnchor="start" dominantBaseline="hanging"
-                  fill={outlineMode ? '#475569' : 'rgba(255,255,255,0.8)'}
+                  fill={outlineMode ? 'var(--canvas-outline-index)' : 'rgba(255,255,255,0.8)'}
                   fontSize={8} fontWeight="700"
                   aria-hidden
                   style={{ pointerEvents: 'none', userSelect: 'none' }}
@@ -629,7 +629,7 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
                     <text
                       x={px + pw / 2} y={py + 5}
                       textAnchor="middle" dominantBaseline="hanging"
-                      fill={outlineMode ? '#334155' : 'rgba(255,255,255,0.9)'}
+                      fill={outlineMode ? 'var(--canvas-outline-edgedim)' : 'rgba(255,255,255,0.9)'}
                       fontSize={8} fontWeight="700"
                       style={{ pointerEvents: 'none', userSelect: 'none' }}
                     >
@@ -642,7 +642,7 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
                       x={px + 5} y={py + ph / 2}
                       textAnchor="middle" dominantBaseline="hanging"
                       transform={`rotate(-90, ${px + 5}, ${py + ph / 2})`}
-                      fill={outlineMode ? '#334155' : 'rgba(255,255,255,0.9)'}
+                      fill={outlineMode ? 'var(--canvas-outline-edgedim)' : 'rgba(255,255,255,0.9)'}
                       fontSize={8} fontWeight="700"
                       style={{ pointerEvents: 'none', userSelect: 'none' }}
                     >
@@ -691,14 +691,14 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
 
         {/* Sheet dimension labels */}
         <text x={PADDING + (sheetW * scale) / 2} y={PADDING - 10}
-          textAnchor="middle" fill="#94a3b8" fontSize={11}>
+          textAnchor="middle" fill="var(--canvas-dim-label)" fontSize={11}>
           {fmt(sheetW)}{sfx}
         </text>
         <text
           x={PADDING - 10} y={PADDING + (sheetH * scale) / 2}
           textAnchor="middle"
           transform={`rotate(-90, ${PADDING - 10}, ${PADDING + (sheetH * scale) / 2})`}
-          fill="#94a3b8" fontSize={11}
+          fill="var(--canvas-dim-label)" fontSize={11}
         >
           {fmt(sheetH)}{sfx}
         </text>
@@ -711,8 +711,8 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
             title="Expand to full view"
             aria-label="Expand sheet to full view"
             className="absolute flex items-center justify-center rounded-md
-                       bg-white hover:bg-slate-50 text-slate-400 hover:text-slate-700
-                       shadow-sm border border-slate-200 transition-all"
+                       bg-card hover:bg-muted text-muted-foreground hover:text-foreground
+                       shadow-sm border border-border transition-all"
             style={{ top: -11, right: -11, width: 22, height: 22, zIndex: 1 }}
           >
             <Maximize2 style={{ width: 12, height: 12 }} />
@@ -722,7 +722,7 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
 
       {/* ── Approximate cut sequence notice ─────────────────────────────── */}
       {showCutSequence && sheetLayout.cutSequenceApproximate && (
-        <p className="mt-1 text-xs text-amber-600 flex items-center gap-1">
+        <p className="mt-1 text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
           <span aria-hidden>⚠</span>
           Cut sequence is approximate — pieces are not in a guillotine-valid layout. Amber cuts may pass through a piece; re-optimize to restore a valid sequence.
         </p>
@@ -736,7 +736,7 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
         }).length;
         if (mismatches === 0) return null;
         return (
-          <p className="mt-1 text-xs text-amber-700 flex items-center gap-1">
+          <p className="mt-1 text-xs text-amber-700 dark:text-amber-400 flex items-center gap-1">
             <span aria-hidden>⚠</span>
             {mismatches} piece{mismatches !== 1 ? 's' : ''} placed cross-grain (grain runs perpendicular to the sheet grain). Rotate to align if grain direction matters for this cut.
           </p>
@@ -764,17 +764,17 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
         return (
           <div className="flex flex-wrap gap-x-5 gap-y-1 pt-1">
             {[...seen.values()].map(({ label, width, height, color, count, idx }) => (
-              <div key={idx} className="flex items-center gap-1.5 text-xs text-slate-500">
+              <div key={idx} className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <span
                   className="inline-block w-3 h-3 rounded-sm shrink-0"
                   style={{
-                    backgroundColor: outlineMode ? 'white' : color,
-                    border: outlineMode ? '1.5px solid #1e293b' : '1px solid rgba(0,0,0,0.1)',
+                    backgroundColor: outlineMode ? 'var(--canvas-outline-fill)' : color,
+                    border: outlineMode ? '1.5px solid var(--canvas-outline-stroke)' : '1px solid rgba(0,0,0,0.1)',
                   }}
                 />
                 <span>
                   {label} — {fmt(width)}{sfx}&thinsp;&times;&thinsp;{fmt(height)}{sfx}
-                  {count > 1 && <strong className="text-slate-700 ml-1">&times;{count}</strong>}
+                  {count > 1 && <strong className="text-foreground ml-1">&times;{count}</strong>}
                 </span>
               </div>
             ))}
