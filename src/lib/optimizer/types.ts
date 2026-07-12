@@ -9,6 +9,8 @@ export interface StockSheet {
   trimRight: number;
   trimBottom: number;
   trimLeft: number;
+  /** Optional material cost per sheet (display-only, plain number). Undefined = unpriced. */
+  pricePerSheet?: number;
 }
 
 /** A required panel/part from user input */

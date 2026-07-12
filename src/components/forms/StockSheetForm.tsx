@@ -7,9 +7,79 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Plus, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 import { useState } from 'react';
+import { parsePrice } from '@/lib/cost';
 
 /** Matches the import validator's ceiling (src/lib/project-io.ts). */
 const MAX_DIMENSION = 10_000;
+
+/**
+ * Optional currency input. Empty maps to `undefined` (unpriced), not 0, so an
+ * unset price is distinguishable from a genuinely free ($0) sheet. Rejects
+ * negatives, non-numbers, and out-of-range values by keeping the raw text and
+ * flagging the field rather than silently coercing.
+ */
+function PriceInput({
+  value,
+  onChange,
+  'aria-label': ariaLabel,
+}: {
+  value: number | undefined;
+  onChange: (value: number | undefined) => void;
+  'aria-label'?: string;
+}) {
+  const [focused, setFocused] = useState(false);
+  const [rawText, setRawText] = useState('');
+  const [invalid, setInvalid] = useState(false);
+
+  const display = value === undefined ? '' : String(value);
+  const shown = focused || invalid ? rawText : display;
+
+  return (
+    <div className="relative">
+      <span
+        aria-hidden
+        className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-slate-400"
+      >
+        $
+      </span>
+      <Input
+        type="text"
+        inputMode="decimal"
+        value={shown}
+        placeholder="—"
+        aria-label={ariaLabel}
+        aria-invalid={invalid || undefined}
+        onFocus={() => {
+          setFocused(true);
+          if (!invalid) setRawText(display);
+        }}
+        onChange={(e) => {
+          setRawText(e.target.value);
+          if (invalid) setInvalid(false);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur();
+        }}
+        onBlur={() => {
+          setFocused(false);
+          // parsePrice rejects a partial/garbage entry ("12abc", "1,0.0.0") by
+          // returning null rather than storing a wrong numeric prefix, since this
+          // value drives the displayed and exported material totals.
+          const result = parsePrice(rawText);
+          if (result === null) {
+            setInvalid(true);
+            return;
+          }
+          setInvalid(false);
+          onChange(result);
+        }}
+        className={`h-9 text-sm pl-6 ${
+          invalid ? 'border-red-400 focus-visible:ring-red-400/40' : ''
+        }`}
+      />
+    </div>
+  );
+}
 
 export function StockSheetForm() {
   const { stockSheets, addStockSheet, updateStockSheet, removeStockSheet, units } =
@@ -77,6 +147,18 @@ export function StockSheetForm() {
                 min={1}
                 max={100}
                 aria-label={`${sheet.label || `Sheet ${idx + 1}`} quantity`}
+              />
+            </div>
+          </div>
+
+          {/* Row 3: price per sheet (optional) */}
+          <div className="grid grid-cols-3 gap-2">
+            <div className="col-span-1">
+              <label className="field-label">Price / sheet</label>
+              <PriceInput
+                value={sheet.pricePerSheet}
+                onChange={(v) => updateStockSheet(sheet.id, { pricePerSheet: v })}
+                aria-label={`${sheet.label || `Sheet ${idx + 1}`} price per sheet`}
               />
             </div>
           </div>

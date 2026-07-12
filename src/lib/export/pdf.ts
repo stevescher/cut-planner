@@ -2,6 +2,7 @@ import jsPDF from 'jspdf';
 import { Solution, StockSheet, Panel } from '@/lib/optimizer/types';
 import { formatDisplay, unitSuffix, Units } from '@/lib/fractions';
 import { safeFilename } from '@/lib/safe-export';
+import { computeCost, formatCurrency } from '@/lib/cost';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -137,6 +138,140 @@ function drawSummaryPage(
   }
 
   return pageNum;
+}
+
+// ── Cost breakdown page (optional) ───────────────────────────────────────────
+
+// Cost-table geometry — shared between the row-capacity predictor and the
+// renderer so predicted page count always matches what actually renders.
+// Exported so the pagination test can simulate the render loop faithfully.
+export const COST_ROW_H = 0.3;
+const COST_HEADER_TITLE_Y = 0.45; // "Material Cost" title baseline (page-relative to margin)
+const COST_HEADER_COLS_Y = 0.95;  // column-label row
+const COST_FIRST_ROW_Y = COST_HEADER_COLS_Y + 0.08 + 0.28; // first data-row baseline
+const COST_ROW_BOTTOM_MARGIN = 0.6;
+// Vertical space the grand-total block needs after the last row (rule + Total +
+// optional partial-estimate note). Reserved on the final page only.
+const COST_TOTAL_BLOCK_H = 0.7;
+export const COST_GEOMETRY = {
+  rowH: COST_ROW_H,
+  firstRowY: COST_FIRST_ROW_Y,
+  rowBottomMargin: COST_ROW_BOTTOM_MARGIN,
+  totalBlockH: COST_TOTAL_BLOCK_H,
+} as const;
+
+/**
+ * Rows a cost page can hold. Every page reserves room for the total block, so
+ * the grand total always fits after the last row on whatever page it lands —
+ * this keeps the row-capacity uniform and the page-count predictor non-circular.
+ */
+function costRowsPerPage(pageH: number, margin: number): number {
+  const firstRowY = margin + COST_FIRST_ROW_Y;
+  const bottom = pageH - margin - COST_ROW_BOTTOM_MARGIN - COST_TOTAL_BLOCK_H;
+  return Math.max(1, Math.floor((bottom - firstRowY) / COST_ROW_H) + 1);
+}
+
+/**
+ * How many pages the cost breakdown occupies. Returns 0 when unpriced. Every
+ * page has the same row capacity (each reserves total-block space), so the count
+ * is a simple ceiling — and always matches the renderer, so no cost.line is ever
+ * silently dropped.
+ */
+export function costPageCount(lineCount: number, hasPricing: boolean, pageH: number, margin: number): number {
+  if (!hasPricing || lineCount === 0) return 0;
+  return Math.ceil(lineCount / costRowsPerPage(pageH, margin));
+}
+
+/**
+ * Draw the material-cost breakdown on its own page(s). Kept separate from the
+ * panel table so it never perturbs summaryPageCount. Paginates so every
+ * cost.line is rendered — a dropped row would make the breakdown fail to
+ * reconcile with the grand total. Returns the number of pages drawn (0 when
+ * unpriced). `firstPageNum` is the footer number of its first page.
+ */
+function drawCostPage(
+  pdf: jsPDF,
+  solution: Solution,
+  stockSheets: StockSheet[],
+  projectName: string,
+  margin: number,
+  pageW: number,
+  pageH: number,
+  firstPageNum: number,
+  totalPages: number,
+): number {
+  const cost = computeCost(solution, stockSheets);
+  if (!cost.hasPricing) return 0;
+
+  const drawHeader = (): number => {
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(14);
+    pdf.setTextColor(30, 30, 30);
+    pdf.text('Material Cost', margin, margin + COST_HEADER_TITLE_Y);
+
+    let yy = margin + COST_HEADER_COLS_Y;
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(8);
+    pdf.setTextColor(120, 120, 120);
+    pdf.text('Sheet Type', margin + 0.02, yy);
+    pdf.text('Sheets Used', margin + 4.0, yy);
+    pdf.text('Price / Sheet', margin + 6.0, yy);
+    pdf.text('Subtotal', pageW - margin, yy, { align: 'right' });
+    yy += 0.08;
+    pdf.setDrawColor(220, 220, 220);
+    pdf.setLineWidth(0.005);
+    pdf.line(margin, yy, pageW - margin, yy);
+    yy += 0.28;
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(10);
+    pdf.setTextColor(40, 40, 40);
+    return yy;
+  };
+
+  let pageIdx = 0;
+  let y = drawHeader();
+
+  // Every page reserves total-block space, so the grand total always fits below
+  // the last row on its page — no row is dropped, and the count matches
+  // costPageCount exactly (see the pagination test).
+  const rowBottom = pageH - margin - COST_ROW_BOTTOM_MARGIN - COST_TOTAL_BLOCK_H;
+  for (let i = 0; i < cost.lines.length; i++) {
+    if (y > rowBottom) {
+      drawPageFooter(pdf, projectName, firstPageNum + pageIdx, totalPages, pageW, pageH, margin);
+      pdf.addPage();
+      pageIdx++;
+      y = drawHeader();
+    }
+    const line = cost.lines[i];
+    pdf.text(line.label, margin + 0.02, y);
+    pdf.text(String(line.sheetsUsed), margin + 4.0, y);
+    pdf.text(line.pricePerSheet !== undefined ? formatCurrency(line.pricePerSheet) : '—', margin + 6.0, y);
+    pdf.text(line.subtotal !== undefined ? formatCurrency(line.subtotal) : '—', pageW - margin, y, { align: 'right' });
+    y += COST_ROW_H;
+  }
+
+  // Grand total (on the final cost page)
+  y += 0.05;
+  pdf.setDrawColor(160, 160, 160);
+  pdf.setLineWidth(0.008);
+  pdf.line(margin + 4.0, y, pageW - margin, y);
+  y += 0.3;
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(11);
+  pdf.setTextColor(30, 30, 30);
+  pdf.text('Total', margin + 4.0, y);
+  pdf.text(formatCurrency(cost.grandTotal), pageW - margin, y, { align: 'right' });
+
+  if (cost.hasUnpriced) {
+    y += 0.35;
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(8);
+    pdf.setTextColor(150, 150, 150);
+    pdf.text('Some sheets are unpriced — total is a partial estimate.', margin, y);
+  }
+
+  drawPageFooter(pdf, projectName, firstPageNum + pageIdx, totalPages, pageW, pageH, margin);
+  return pageIdx + 1;
 }
 
 // ── Per-sheet pages: diagram (top) + cut list (bottom) ───────────────────────
@@ -301,7 +436,9 @@ export async function exportSolutionAsPdf(
   const margin = 0.5;
 
   const summaryPages = summaryPageCount(panels.length, pageH, margin);
-  const totalPages = summaryPages + solution.sheets.length;
+  const cost = computeCost(solution, stockSheets);
+  const costPages = costPageCount(cost.lines.length, cost.hasPricing, pageH, margin);
+  const totalPages = summaryPages + costPages + solution.sheets.length;
 
   // Pages 1..summaryPages: summary + (paginated) panels-needed table
   const usedSummaryPages = drawSummaryPage(
@@ -309,12 +446,22 @@ export async function exportSolutionAsPdf(
   );
   drawPageFooter(pdf, projectName, usedSummaryPages, totalPages, pageW, pageH, margin);
 
-  // Remaining pages: one per sheet, numbered after the summary pages
+  // Optional cost page(s), numbered right after the summary pages
+  if (costPages > 0) {
+    pdf.addPage();
+    drawCostPage(
+      pdf, solution, stockSheets, projectName, margin, pageW, pageH,
+      summaryPages + 1, totalPages
+    );
+  }
+
+  // Remaining pages: one per sheet, numbered after the summary (+ cost) pages
+  const beforeSheets = summaryPages + costPages;
   for (let si = 0; si < solution.sheets.length; si++) {
     pdf.addPage();
     drawSheetPage(
       pdf, solution, si, stockSheets, margin, pageW, pageH,
-      projectName, summaryPages + si + 1, totalPages, units
+      projectName, beforeSheets + si + 1, totalPages, units
     );
   }
 

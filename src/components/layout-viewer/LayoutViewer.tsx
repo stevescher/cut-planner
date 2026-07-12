@@ -14,6 +14,7 @@ import { useViewStore, ZOOM_MIN, ZOOM_MAX, ZOOM_STEP } from '@/store/useViewStor
 import { useOptimizer } from '@/hooks/useOptimizer';
 import { Panel, StockSheet, Solution } from '@/lib/optimizer/types';
 import { formatDisplay, unitSuffix } from '@/lib/fractions';
+import { computeCost, formatCurrency } from '@/lib/cost';
 
 // ── Fix suggestion helpers ────────────────────────────────────────────────────
 
@@ -413,6 +414,50 @@ export function LayoutViewer() {
                     </span>
                   )}
                 </div>
+
+                {/* Material cost breakdown — only when at least one used sheet is priced */}
+                {(() => {
+                  const cost = computeCost(activeSolution, stockSheets);
+                  if (!cost.hasPricing) return null;
+                  return (
+                    <div className="rounded-xl border border-slate-200 bg-slate-50/60 overflow-hidden">
+                      <div className="px-4 py-2 border-b border-slate-200 flex items-center justify-between">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                          Material Cost
+                        </span>
+                        <span className="text-base font-bold text-slate-800 tabular-nums">
+                          {formatCurrency(cost.grandTotal)}
+                        </span>
+                      </div>
+                      <div className="divide-y divide-slate-100">
+                        {cost.lines.map((line) => (
+                          <div
+                            key={line.stockSheetId}
+                            className="px-4 py-1.5 flex items-center justify-between text-sm"
+                          >
+                            <span className="text-slate-600">
+                              {line.label}
+                              <span className="text-slate-400">
+                                {' '}· {line.sheetsUsed} sheet{line.sheetsUsed !== 1 ? 's' : ''}
+                                {line.pricePerSheet !== undefined
+                                  ? ` × ${formatCurrency(line.pricePerSheet)}`
+                                  : ''}
+                              </span>
+                            </span>
+                            <span className="font-semibold text-slate-700 tabular-nums">
+                              {line.subtotal !== undefined ? formatCurrency(line.subtotal) : '—'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                      {cost.hasUnpriced && (
+                        <div className="px-4 py-1.5 text-[11px] text-slate-400 border-t border-slate-100">
+                          Some sheets are unpriced — total is a partial estimate.
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* Sheet canvases */}
                 {activeSolution.sheets.map((sheetLayout, i) => {

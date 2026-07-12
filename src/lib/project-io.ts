@@ -40,6 +40,9 @@ function validateProjectData(data: unknown): data is ProjectData {
     for (const trim of ['trimTop', 'trimRight', 'trimBottom', 'trimLeft']) {
       if (!isFiniteNonNegative(sheet[trim]) || (sheet[trim] as number) > MAX_DIMENSION) return false;
     }
+    // pricePerSheet is optional; reject only a wrong type or an out-of-range value.
+    if (sheet.pricePerSheet !== undefined &&
+        (!isFiniteNonNegative(sheet.pricePerSheet) || (sheet.pricePerSheet as number) > 1_000_000)) return false;
   }
 
   // Accept missing units for backwards compatibility with pre-units saves; default to 'imperial'
