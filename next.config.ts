@@ -56,6 +56,10 @@ export default withSentryConfig(nextConfig, {
   project: "cut-planner",
   silent: !process.env.CI,
   widenClientFileUpload: true,
-  disableLogger: true,
-  automaticVercelMonitors: true,
+  webpack: {
+    treeshake: {
+      removeDebugLogging: true,
+    },
+    automaticVercelMonitors: true,
+  },
 });
