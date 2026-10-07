@@ -42,3 +42,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Machine-local Claude Code hook rules (hookify); may reference local credentials
+.claude/*.local.md
