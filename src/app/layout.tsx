@@ -1,14 +1,24 @@
 import type { Metadata } from "next";
-import { Plus_Jakarta_Sans } from "next/font/google";
+import localFont from "next/font/local";
 import { Suspense } from "react";
 import { PostHogPageView } from "@/components/PostHogPageView";
 import { PHProvider } from "./providers";
 import "./globals.css";
 
-const jakarta = Plus_Jakarta_Sans({
+// Self-hosted rather than next/font/google: Google Fonts intermittently answers
+// the build's CSS request with extensionless /l/font?kit=...&skey=... URLs, and
+// the build fails on them (Turbopack reports "next/font/google queries have
+// exactly one entry", vercel/next.js#99114, open as of 2026-10-06; webpack
+// throws a TypeError in the Google font loader). Shipping the files removes the
+// build-time network dependency entirely.
+//
+// This is the Google Fonts "latin" subset woff2 of Plus Jakarta Sans v12: one
+// variable file, which Google served for every requested weight (300 to 800),
+// SIL Open Font License.
+const jakarta = localFont({
+  src: "./fonts/plus-jakarta-sans-latin.woff2",
   variable: "--font-jakarta",
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700", "800"],
+  weight: "300 800",
   display: "swap",
 });
 
