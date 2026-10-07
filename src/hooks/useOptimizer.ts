@@ -6,6 +6,7 @@ import { useProjectStore } from '@/store/useProjectStore';
 import { useLayoutStore } from '@/store/useLayoutStore';
 import { useDragStore } from '@/store/useDragStore';
 import { solveAll } from '@/lib/optimizer/solver';
+import { needsGrainChoice } from '@/lib/materials';
 import {
   ConstraintCosts,
   constraintDelta,
@@ -58,6 +59,9 @@ export function useOptimizer() {
 
   const optimize = useCallback(async () => {
     const { stockSheets, panels, kerf, cutPreference, grainGroups } = useProjectStore.getState();
+    // Same gate as the Plan Cuts button, for other callers (add-sheets re-plan):
+    // a square grained sheet needs a grain direction before it can be planned.
+    if (stockSheets.some(needsGrainChoice)) return;
     const { setOptimizing, setSolutions, setConstraintCosts } = useLayoutStore.getState();
     const run = ++runRef.current;
 

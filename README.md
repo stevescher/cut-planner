@@ -35,6 +35,7 @@ A web-based plywood and sheet goods cutlist optimizer. Enter your stock sheet di
 | **Stock sheet entry** | Preset sizes (4×8, 5×5, 2×4, etc. / metric equivalents) or custom dimensions. Per-sheet label, quantity, and optional edge trim (top/right/bottom/left) |
 | **Panel entry** | Label, length, width, quantity. Color-coded dots match layout colors |
 | **Kerf setting** | Blade kerf in inches or mm — deducted from every cut edge automatically |
+| **Material presets** | Pick a sheet material (veneered ply, Baltic birch, woodgrain melamine/TFL, MDF, particleboard, solid melamine, hardboard) to pre-fill its grain and label. Square sheets of a grained material ask you to choose the grain direction |
 | **Grain direction** | Each stock sheet's grain runs along its length, along its width, or none (MDF, particleboard, solid melamine). Each panel's grain runs along its length, across it, or doesn't matter (hidden parts), and the optimizer only places parts in orientations their grain allows |
 | **Grain-matched groups** | Put panels (for example a bank of drawer fronts) in a group and they are cut in list order from one strip, stacked side by side or end to end, so the grain flows from part to part. The group is placed, re-planned and dragged as one block |
 | **First cut** | Auto, Favor or Always rip-first, Favor or Always crosscut-first. "Favor" never costs a sheet; "Always" is required even at a material cost |

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Plus, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 import { useState } from 'react';
 import { parsePrice } from '@/lib/cost';
+import { MATERIAL_PRESETS, dimensionUpdates, materialUpdates, needsGrainChoice } from '@/lib/materials';
 
 /** Matches the import validator's ceiling (src/lib/project-io.ts). */
 const MAX_DIMENSION = 10_000;
@@ -94,7 +95,7 @@ export function StockSheetForm() {
           {/* Row 1: preset + label + delete */}
           <div className="flex gap-2 items-center">
             <StockPresetSelect
-              onSelect={(length, width) => updateStockSheet(sheet.id, { length, width })}
+              onSelect={(length, width) => updateStockSheet(sheet.id, dimensionUpdates(sheet, { length, width }))}
               units={units}
             />
             <Input
@@ -121,7 +122,7 @@ export function StockSheetForm() {
               <label className="field-label">Length</label>
               <NumberInput
                 value={sheet.length}
-                onChange={(v) => updateStockSheet(sheet.id, { length: v })}
+                onChange={(v) => updateStockSheet(sheet.id, dimensionUpdates(sheet, { length: v }))}
                 placeholder={units === 'metric' ? '2440' : '96'}
                 units={units}
                 max={MAX_DIMENSION}
@@ -132,7 +133,7 @@ export function StockSheetForm() {
               <label className="field-label">Width</label>
               <NumberInput
                 value={sheet.width}
-                onChange={(v) => updateStockSheet(sheet.id, { width: v })}
+                onChange={(v) => updateStockSheet(sheet.id, dimensionUpdates(sheet, { width: v }))}
                 placeholder={units === 'metric' ? '1220' : '48'}
                 units={units}
                 max={MAX_DIMENSION}
@@ -150,6 +151,30 @@ export function StockSheetForm() {
                 aria-label={`${sheet.label || `Sheet ${idx + 1}`} quantity`}
               />
             </div>
+          </div>
+
+          {/* Material preset: pre-fills grain (and the label if empty) */}
+          <div>
+            <label className="field-label" htmlFor={`material-${sheet.id}`}>Material</label>
+            <select
+              id={`material-${sheet.id}`}
+              value={sheet.material ?? ''}
+              onChange={(e) => updateStockSheet(sheet.id, materialUpdates(sheet, e.target.value || undefined))}
+              className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm text-foreground
+                         focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+            >
+              <option value="">Other / not set</option>
+              <optgroup label="Has grain">
+                {MATERIAL_PRESETS.filter((m) => m.grained).map((m) => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </optgroup>
+              <optgroup label="No grain">
+                {MATERIAL_PRESETS.filter((m) => !m.grained).map((m) => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </optgroup>
+            </select>
           </div>
 
           {/* Row 3: price per sheet + grain direction (both optional) */}
@@ -195,6 +220,12 @@ export function StockSheetForm() {
               </div>
             </div>
           </div>
+          {needsGrainChoice(sheet) && (
+            <p className="text-[11px] font-medium text-amber-700 dark:text-amber-400">
+              Square sheet: choose Length or Width for the grain. Check which edge the face grain
+              parallels; it isn&apos;t standard on square sheets.
+            </p>
+          )}
           {sheet.grainDirection !== 'none' && sheet.length > 0 && sheet.length === sheet.width && (
             <p className="text-[11px] text-muted-foreground">
               Square sheet: &ldquo;length&rdquo; is the left-to-right edge in the layout.

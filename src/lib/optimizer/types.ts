@@ -60,6 +60,8 @@ export interface StockSheet {
   pricePerSheet?: number;
   /** Direction the face grain runs on this sheet. See SheetGrain. */
   grainDirection: SheetGrain;
+  /** Material preset id (see src/lib/materials.ts), if one was chosen. */
+  material?: string;
 }
 
 /** A required panel/part from user input */

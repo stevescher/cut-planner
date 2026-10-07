@@ -6,6 +6,7 @@ import { StockSheetForm } from '@/components/forms/StockSheetForm';
 import { PanelForm } from '@/components/forms/PanelForm';
 import { KerfSetting } from '@/components/forms/KerfSetting';
 import { CutOrderSetting } from '@/components/forms/CutOrderSetting';
+import { needsGrainChoice } from '@/lib/materials';
 import { UnitToggle } from '@/components/forms/UnitToggle';
 import { ProjectMenu } from '@/components/project/ProjectMenu';
 import { LayoutViewer } from '@/components/layout-viewer/LayoutViewer';
@@ -81,9 +82,13 @@ export default function Home() {
   const handleUndo = () => applyHistoryEntry(useHistoryStore.getState().undo(currentEntry()));
   const handleRedo = () => applyHistoryEntry(useHistoryStore.getState().redo(currentEntry()));
 
+  // A square sheet of a grained material has no standard grain edge, so
+  // planning waits until the user picks Length or Width for it.
+  const sheetsNeedingGrain = stockSheets.filter(needsGrainChoice);
   const canOptimize =
     stockSheets.some((s) => s.length > 0 && s.width > 0) &&
-    panels.some((p) => p.length > 0 && p.width > 0);
+    panels.some((p) => p.length > 0 && p.width > 0) &&
+    sheetsNeedingGrain.length === 0;
 
   return (
     <div className="flex flex-col h-screen bg-background">
@@ -229,10 +234,17 @@ export default function Home() {
               className="btn-optimize w-full h-11 rounded-xl text-sm flex items-center justify-center gap-2"
               onClick={optimize}
               disabled={!canOptimize || isOptimizing}
+              aria-describedby={sheetsNeedingGrain.length > 0 ? 'plan-blocked-reason' : undefined}
             >
               <Scissors className="h-4 w-4" />
               {isOptimizing ? 'Planning…' : 'Plan Cuts'}
             </button>
+            {sheetsNeedingGrain.length > 0 && (
+              <p id="plan-blocked-reason" className="mt-2 text-[11px] font-medium text-amber-700 dark:text-amber-400">
+                Choose a grain direction (Length or Width) for{' '}
+                {sheetsNeedingGrain.map((s) => s.label || 'the square sheet').join(', ')} before planning.
+              </p>
+            )}
           </div>
         </aside>
 

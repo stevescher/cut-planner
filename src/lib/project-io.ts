@@ -1,14 +1,16 @@
 import { CutPreference, GroupArrangement, PanelGrain, ProjectData, SheetGrain } from './optimizer/types';
 import { safeFilename } from './safe-export';
 import { GROUP_PANEL_PREFIX } from './optimizer/grain-groups';
+import { MATERIAL_IDS } from './materials';
 
 const STORAGE_KEY = 'cut-planner-project';
 
 /** Current on-disk schema version. Bump when the shape changes and add a
  *  migration step in migrateProjectData below.
  *  v2: three-state sheet grain ('none' added), per-panel `grain` replacing
- *  `lockRotation`, a project-level `cutPreference`, and grain-matched
- *  `grainGroups` with per-panel `grainGroup` membership. */
+ *  `lockRotation`, a project-level `cutPreference`, grain-matched
+ *  `grainGroups` with per-panel `grainGroup` membership, and an optional
+ *  sheet `material` preset. */
 const CURRENT_VERSION = 2 as const;
 
 const SHEET_GRAINS: readonly SheetGrain[] = ['length', 'width', 'none'];
@@ -68,6 +70,8 @@ function validateProjectData(data: unknown): data is StoredProject {
     if (sheet.grainDirection !== undefined &&
         !SHEET_GRAINS.includes(sheet.grainDirection as SheetGrain)) return false;
     if (d.version < 2 && sheet.grainDirection === 'none') return false;
+    // material is optional; accept only known preset ids.
+    if (sheet.material !== undefined && !MATERIAL_IDS.includes(sheet.material as string)) return false;
   }
 
   // Accept missing units for backwards compatibility with pre-units saves; default to 'imperial'
