@@ -6,12 +6,23 @@ import { useProjectStore } from '@/store/useProjectStore';
 import { useLayoutStore } from '@/store/useLayoutStore';
 import { useDragStore } from '@/store/useDragStore';
 import { solveAll } from '@/lib/optimizer/solver';
+import {
+  ConstraintCosts,
+  constraintDelta,
+  cutOrderIsActive,
+  grainIsActive,
+  relaxGrain,
+} from '@/lib/constraint-cost';
 
 type WorkerApi = { solveAll: typeof solveAll };
+type SolveConfig = Parameters<typeof solveAll>[0];
 
 export function useOptimizer() {
   const remoteRef = useRef<Remote<WorkerApi> | null>(null);
   const workerRef = useRef<Worker | null>(null);
+  // Incremented per plan, so a slow comparison solve from an earlier plan never
+  // writes its costs over a newer plan.
+  const runRef = useRef(0);
 
   useEffect(() => {
     let worker: Worker;
@@ -38,9 +49,16 @@ export function useOptimizer() {
     };
   }, []);
 
+  const solve = useCallback(async (config: SolveConfig) => {
+    if (remoteRef.current) return remoteRef.current.solveAll(config);
+    // Worker not yet initialized: fall back to a main-thread synchronous call
+    return solveAll(config);
+  }, []);
+
   const optimize = useCallback(async () => {
-    const { stockSheets, panels, kerf } = useProjectStore.getState();
-    const { setOptimizing, setSolutions } = useLayoutStore.getState();
+    const { stockSheets, panels, kerf, cutPreference } = useProjectStore.getState();
+    const { setOptimizing, setSolutions, setConstraintCosts } = useLayoutStore.getState();
+    const run = ++runRef.current;
 
     // A fresh plan produces brand-new placement arrays, so any pins (which are
     // keyed by placement index) from a previous plan are meaningless and could
@@ -48,22 +66,43 @@ export function useOptimizer() {
     useDragStore.getState().clearPins();
 
     setOptimizing(true);
+    let best;
     try {
-      let solutions;
-      if (remoteRef.current) {
-        solutions = await remoteRef.current.solveAll({ stockSheets, panels, kerf });
-      } else {
-        // Worker not yet initialized — fall back to main-thread synchronous call
-        solutions = solveAll({ stockSheets, panels, kerf });
-      }
+      const solutions = await solve({ stockSheets, panels, kerf, cutPreference });
       setSolutions(solutions);
+      best = solutions[0];
     } catch (e) {
       console.error('Optimization failed:', e);
       setSolutions([]);
     } finally {
       setOptimizing(false);
     }
-  }, []);
+
+    // Constraint cost readout: re-solve with each active constraint relaxed
+    // and compare best plans. This runs after the main result is on screen,
+    // since it doubles or triples the solver work.
+    if (!best) return;
+    const grainOn = grainIsActive(stockSheets, panels);
+    const cutOrderOn = cutOrderIsActive(cutPreference);
+    if (!grainOn && !cutOrderOn) return;
+    try {
+      const costs: ConstraintCosts = {};
+      if (grainOn) {
+        const relaxed = await solve({ stockSheets, panels: relaxGrain(panels), kerf, cutPreference });
+        if (relaxed[0]) costs.grain = constraintDelta(best, relaxed[0], stockSheets);
+      }
+      if (cutOrderOn) {
+        const relaxed = await solve({ stockSheets, panels, kerf, cutPreference: 'auto' });
+        if (relaxed[0]) costs.cutOrder = constraintDelta(best, relaxed[0], stockSheets);
+      }
+      // Skip if a newer plan started, or an anchored re-plan replaced the
+      // layout this comparison was measured against.
+      const current = useLayoutStore.getState().solutions[0];
+      if (run === runRef.current && current?.id === best.id) setConstraintCosts(costs);
+    } catch (e) {
+      console.error('Constraint cost comparison failed:', e);
+    }
+  }, [solve]);
 
   return optimize;
 }

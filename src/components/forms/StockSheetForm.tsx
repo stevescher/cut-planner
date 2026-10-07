@@ -165,15 +165,24 @@ export function StockSheetForm() {
             <div className="col-span-2">
               <label className="field-label">Grain direction</label>
               <div className="flex rounded-lg bg-muted p-0.5 gap-px h-9">
-                {(['length', 'width'] as const).map((dir) => {
-                  const active = (sheet.grainDirection ?? 'length') === dir;
+                {(['length', 'width', 'none'] as const).map((dir) => {
+                  const active = sheet.grainDirection === dir;
                   return (
                     <button
                       key={dir}
                       type="button"
                       onClick={() => updateStockSheet(sheet.id, { grainDirection: dir })}
                       aria-pressed={active}
-                      aria-label={`${sheet.label || `Sheet ${idx + 1}`} grain along ${dir}`}
+                      aria-label={
+                        dir === 'none'
+                          ? `${sheet.label || `Sheet ${idx + 1}`} has no grain`
+                          : `${sheet.label || `Sheet ${idx + 1}`} grain along ${dir}`
+                      }
+                      title={
+                        dir === 'none'
+                          ? 'No grain: MDF, particleboard, solid-color melamine'
+                          : `Face grain runs along the sheet ${dir}`
+                      }
                       className={[
                         'flex-1 rounded-md text-xs font-semibold capitalize transition-all',
                         active ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
@@ -186,6 +195,12 @@ export function StockSheetForm() {
               </div>
             </div>
           </div>
+          {sheet.grainDirection !== 'none' && sheet.length > 0 && sheet.length === sheet.width && (
+            <p className="text-[11px] text-muted-foreground">
+              Square sheet: &ldquo;length&rdquo; is the left-to-right edge in the layout.
+              Check which edge the face grain parallels before cutting.
+            </p>
+          )}
 
           {/* Edge trim toggle */}
           <button

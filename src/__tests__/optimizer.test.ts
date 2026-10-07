@@ -15,6 +15,7 @@ function sheet(partial: Partial<StockSheet> & { length: number; width: number })
     trimRight: partial.trimRight ?? 0,
     trimBottom: partial.trimBottom ?? 0,
     trimLeft: partial.trimLeft ?? 0,
+    grainDirection: partial.grainDirection ?? 'length',
   };
 }
 
@@ -25,7 +26,7 @@ function panel(partial: Partial<Panel> & { length: number; width: number }): Pan
     length: partial.length,
     width: partial.width,
     quantity: partial.quantity ?? 1,
-    lockRotation: partial.lockRotation ?? false,
+    grain: partial.grain ?? 'any',
   };
 }
 
@@ -249,11 +250,11 @@ describe('edge cases', () => {
     expect(solutions[0].sheets.every((sh) => sh.placements.length === 0)).toBe(true);
   });
 
-  it('respects lockRotation (grain lock) — a locked tall part is never laid down', () => {
-    // 40×10 locked; on a 96×48 sheet it must stay 40 long (x) × 10 wide (y).
+  it('respects grain: a follow-grain part on a length-grain sheet is never laid down', () => {
+    // 40×10 follow-grain; on a 96×48 length-grain sheet it must stay 40 long (x) × 10 wide (y).
     const s = best({
       stockSheets: [sheet({ length: 96, width: 48 })],
-      panels: [panel({ length: 40, width: 10, quantity: 1, lockRotation: true })],
+      panels: [panel({ length: 40, width: 10, quantity: 1, grain: 'follow' })],
       kerf: 0.125,
     });
     const p = s.sheets.flatMap((sh) => sh.placements)[0];
@@ -304,7 +305,7 @@ describe('reOptimizeAroundPinned kerf clearance', () => {
   });
 });
 
-describe('reOptimizeAroundPinned respects lockRotation (OPUS-401)', () => {
+describe('reOptimizeAroundPinned respects panel grain (OPUS-401)', () => {
   // A sheet only tall in Y and narrow in X: an unrotated 40(x)×10(y) part does
   // NOT fit (needs 40 of X, only 12 available), but a rotated 10(x)×40(y) part
   // DOES. Without a lock guard the re-optimizer would rotate the locked part to
@@ -337,7 +338,7 @@ describe('reOptimizeAroundPinned respects lockRotation (OPUS-401)', () => {
   }
 
   const lockedPanels: Panel[] = [
-    panel({ id: 'locked', length: 40, width: 10, lockRotation: true }),
+    panel({ id: 'locked', length: 40, width: 10, grain: 'follow' }),
   ];
 
   it('does not rotate a locked anchored (pinned) panel to make it fit', () => {
@@ -362,7 +363,7 @@ describe('reOptimizeAroundPinned respects lockRotation (OPUS-401)', () => {
 
   it('still rotates an UNLOCKED panel when that is the only way to place it', () => {
     const unlockedPanels: Panel[] = [
-      panel({ id: 'locked', length: 40, width: 10, lockRotation: false }),
+      panel({ id: 'locked', length: 40, width: 10, grain: 'any' }),
     ];
     const out = reOptimizeAroundPinned(lockedSolution(false), [narrowTallStock], new Set<string>(), 0.125, unlockedPanels);
     const placed = out.sheets[0].placements.filter((p) => p.panelId === 'locked');

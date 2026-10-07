@@ -5,6 +5,7 @@ import { useAutoSave } from '@/hooks/useAutoSave';
 import { StockSheetForm } from '@/components/forms/StockSheetForm';
 import { PanelForm } from '@/components/forms/PanelForm';
 import { KerfSetting } from '@/components/forms/KerfSetting';
+import { CutOrderSetting } from '@/components/forms/CutOrderSetting';
 import { UnitToggle } from '@/components/forms/UnitToggle';
 import { ProjectMenu } from '@/components/project/ProjectMenu';
 import { LayoutViewer } from '@/components/layout-viewer/LayoutViewer';
@@ -212,8 +213,11 @@ export default function Home() {
 
               {/* Settings */}
               <section>
-                <h2 className="section-header mb-3">Blade Settings</h2>
-                <KerfSetting />
+                <h2 className="section-header mb-3">Cut Settings</h2>
+                <div className="space-y-4">
+                  <KerfSetting />
+                  <CutOrderSetting />
+                </div>
               </section>
 
             </div>

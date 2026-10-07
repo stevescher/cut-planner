@@ -15,6 +15,28 @@ import { useOptimizer } from '@/hooks/useOptimizer';
 import { Panel, StockSheet, Solution } from '@/lib/optimizer/types';
 import { formatDisplay, unitSuffix } from '@/lib/fractions';
 import { computeCost, formatCurrency } from '@/lib/cost';
+import { allowedOrientations } from '@/lib/grain';
+import { ConstraintDelta } from '@/lib/constraint-cost';
+import { cutPreferenceLabel } from '@/components/forms/CutOrderSetting';
+
+/** "+1 sheet (+$68.00)", "no extra sheets", and so on, for the cost readout. */
+function describeDelta(d: ConstraintDelta): string {
+  const parts: string[] = [];
+  const cost = d.extraCost !== null && d.extraCost > 0 ? `+${formatCurrency(d.extraCost)}` : null;
+  if (d.extraSheets > 0) {
+    parts.push(`+${d.extraSheets} sheet${d.extraSheets !== 1 ? 's' : ''}`);
+    if (cost) parts.push(`(${cost})`);
+  } else if (cost) {
+    // Same sheet count, but the constraint pushes parts onto pricier stock.
+    parts.push(`no extra sheets, but ${cost} in pricier stock`);
+  } else {
+    parts.push('no extra sheets');
+  }
+  if (d.extraUnplaced > 0) {
+    parts.push(`and ${d.extraUnplaced} part${d.extraUnplaced !== 1 ? 's' : ''} that only fit without it`);
+  }
+  return parts.join(' ');
+}
 
 // ── Fix suggestion helpers ────────────────────────────────────────────────────
 
@@ -41,13 +63,13 @@ export function suggestFixes(
       .filter((s) => {
         const l = s.length - s.trimLeft - s.trimRight;
         const w = s.width - s.trimTop - s.trimBottom;
-        // The rotated orientation is only reachable if rotation is allowed —
-        // the optimizer keeps a lockRotation panel in its given orientation, so
-        // offering an add-sheets fix for a locked panel that only fits rotated
+        // Only orientations the panel's grain allows on this sheet count: an
+        // add-sheets fix for a panel that only fits in a forbidden orientation
         // would leave it unplaced after the re-plan. (OPUS-405)
+        const o = allowedOrientations(panel.grain, s);
         return (
-          (panel.length <= l && panel.width <= w) ||
-          (!panel.lockRotation && panel.width <= l && panel.length <= w)
+          (o.normal && panel.length <= l && panel.width <= w) ||
+          (o.rotated && panel.width <= l && panel.length <= w)
         );
       })
       .sort((a, b) => a.length * a.width - b.length * b.width);
@@ -82,9 +104,9 @@ export function suggestFixes(
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function LayoutViewer() {
-  const { solutions, activeSolutionIndex, revealedCount, setActive, setSolutions, shuffleNext } =
+  const { solutions, activeSolutionIndex, revealedCount, setActive, setSolutions, shuffleNext, constraintCosts } =
     useLayoutStore();
-  const { stockSheets, panels, kerf, updateStockSheet, units } = useProjectStore();
+  const { stockSheets, panels, kerf, updateStockSheet, units, cutPreference } = useProjectStore();
   const { pinnedPieces, clearPins } = useDragStore();
   const { zoom, setZoom } = useViewStore();
   const optimize = useOptimizer();
@@ -181,7 +203,8 @@ export function LayoutViewer() {
         stockSheets,
         pinnedPieces,
         kerf,
-        panels
+        panels,
+        cutPreference
       );
       // Inject re-optimized result as a new top solution
       const updated = [reOptimized, ...solutions.filter((s) => s.id !== activeSolution.id)];
@@ -443,6 +466,40 @@ export function LayoutViewer() {
                     </span>
                   )}
                 </div>
+
+                {/* Cut-order note: sheets that can't start with the preferred cut */}
+                {(activeSolution.cutOrder?.mismatchedSheets ?? 0) > 0 && (() => {
+                  const n = activeSolution.cutOrder!.mismatchedSheets;
+                  const rip = activeSolution.cutOrder!.preference.endsWith('rip');
+                  return (
+                    <p className="text-xs text-amber-700 dark:text-amber-400 flex items-center gap-1">
+                      <span aria-hidden>⚠</span>
+                      {n} sheet{n !== 1 ? 's' : ''} can&apos;t start with a full-{rip ? 'length rip' : 'width crosscut'}
+                      {' '}({cutPreferenceLabel(activeSolution.cutOrder!.preference)}).
+                    </p>
+                  );
+                })()}
+
+                {/* What grain and cut-order settings cost, versus the best plan without them */}
+                {constraintCosts && (constraintCosts.grain || constraintCosts.cutOrder) && (
+                  <div className="text-xs text-muted-foreground space-y-0.5" data-testid="constraint-costs">
+                    {constraintCosts.grain && (
+                      <p>
+                        <span className="font-semibold text-foreground">Grain rules:</span>{' '}
+                        {describeDelta(constraintCosts.grain)}
+                      </p>
+                    )}
+                    {constraintCosts.cutOrder && activeSolution.cutOrder && (
+                      <p>
+                        <span className="font-semibold text-foreground">
+                          {cutPreferenceLabel(activeSolution.cutOrder.preference)}:
+                        </span>{' '}
+                        {describeDelta(constraintCosts.cutOrder)}
+                      </p>
+                    )}
+                    <p className="text-[11px]">Compared with the best layout without each setting.</p>
+                  </div>
+                )}
 
                 {/* Material cost breakdown — only when at least one used sheet is priced */}
                 {(() => {

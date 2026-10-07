@@ -1,6 +1,8 @@
 import { nanoid } from 'nanoid';
-import { Solution, SheetLayout, StockSheet, Placement, CutStep, Panel } from './types';
+import { Solution, SheetLayout, StockSheet, Placement, CutStep, Panel, CutPreference } from './types';
 import { FIT_EPS } from './guillotine';
+import { allowedOrientations } from '../grain';
+import { CutAxis, evaluateCutOrder, preferredFirstCut } from './cut-order';
 import {
   FreeRect,
   pruneContained,
@@ -64,6 +66,10 @@ function badgeAnchor(
  * When no clean cut exists (non-guillotine-valid layout after manual edits),
  * a best-effort approximate cut is emitted and marked `approximate: true`.
  *
+ * When `opts.firstCut` is set (from the user's cut-order preference), the
+ * square-the-stock trims in that direction come first and the first
+ * piece-freeing cut runs that way whenever the layout allows it.
+ *
  * Returns `{ steps, isApproximate }` where `isApproximate` is true if any
  * step in the sequence is an approximation.
  */
@@ -77,6 +83,7 @@ export function deriveCutSequenceFromPlacements(
     right: 0,
     bottom: 0,
   },
+  opts: { firstCut?: CutAxis | null } = {},
 ): { steps: CutStep[]; isApproximate: boolean } {
   if (placements.length === 0) return { steps: [], isApproximate: false };
 
@@ -103,34 +110,26 @@ export function deriveCutSequenceFromPlacements(
   // usable size before ripping parts.
   const trimSteps: CutStep[] = [];
   let stepNum = 1;
-  if (trim.left > TRIM_EPS) {
-    trimSteps.push({
-      stepNumber: stepNum++, orientation: 'vertical', kind: 'trim',
-      x1: usable.x0, y1: 0, x2: usable.x0, y2: sheetH,
-      segments: [{ x1: usable.x0, y1: 0, x2: usable.x0, y2: sheetH }],
-    });
-  }
-  if (trim.right > TRIM_EPS) {
-    trimSteps.push({
-      stepNumber: stepNum++, orientation: 'vertical', kind: 'trim',
-      x1: usable.x1, y1: 0, x2: usable.x1, y2: sheetH,
-      segments: [{ x1: usable.x1, y1: 0, x2: usable.x1, y2: sheetH }],
-    });
-  }
-  if (trim.top > TRIM_EPS) {
-    trimSteps.push({
-      stepNumber: stepNum++, orientation: 'horizontal', kind: 'trim',
-      x1: 0, y1: usable.y0, x2: sheetW, y2: usable.y0,
-      segments: [{ x1: 0, y1: usable.y0, x2: sheetW, y2: usable.y0 }],
-    });
-  }
-  if (trim.bottom > TRIM_EPS) {
-    trimSteps.push({
-      stepNumber: stepNum++, orientation: 'horizontal', kind: 'trim',
-      x1: 0, y1: usable.y1, x2: sheetW, y2: usable.y1,
-      segments: [{ x1: 0, y1: usable.y1, x2: sheetW, y2: usable.y1 }],
-    });
-  }
+  const trimCut = (orientation: CutAxis, pos: number): CutStep => {
+    const seg = orientation === 'vertical'
+      ? { x1: pos, y1: 0, x2: pos, y2: sheetH }
+      : { x1: 0, y1: pos, x2: sheetW, y2: pos };
+    return { stepNumber: stepNum++, orientation, kind: 'trim', ...seg, segments: [seg] };
+  };
+  const pushTrims = (orientation: CutAxis) => {
+    if (orientation === 'vertical') {
+      if (trim.left > TRIM_EPS) trimSteps.push(trimCut('vertical', usable.x0));
+      if (trim.right > TRIM_EPS) trimSteps.push(trimCut('vertical', usable.x1));
+    } else {
+      if (trim.top > TRIM_EPS) trimSteps.push(trimCut('horizontal', usable.y0));
+      if (trim.bottom > TRIM_EPS) trimSteps.push(trimCut('horizontal', usable.y1));
+    }
+  };
+  // Trims in the preferred first-cut direction go first; by default the
+  // vertical (end) trims lead.
+  const firstTrim: CutAxis = opts.firstCut ?? 'vertical';
+  pushTrims(firstTrim);
+  pushTrims(firstTrim === 'vertical' ? 'horizontal' : 'vertical');
 
   // Single-panel sheet: trim cuts (above) plus the two cuts that free the piece
   // from the remaining usable waste — vertical at its right edge, horizontal at
@@ -142,13 +141,14 @@ export function deriveCutSequenceFromPlacements(
     const rightEdge  = p.x + p.width;
     const bottomEdge = p.y + p.height;
 
+    const freeing: CutStep[] = [];
     // Vertical cut (cross-cut to length) — emit whenever any real offcut exists.
     // The threshold is a rounding tolerance, NOT the kerf: a 95.9" part on a 96"
     // sheet leaves only 0.1" of waste (< a 1/8" blade) but the stock still must
     // be cut down to the recorded part size, so the instruction must appear.
     if (rightEdge < usable.x1 - TRIM_EPS) {
-      steps.push({
-        stepNumber: stepNum++,
+      freeing.push({
+        stepNumber: 0,
         orientation: 'vertical',
         kind: 'crosscut',
         x1: rightEdge, y1: usable.y0, x2: rightEdge, y2: usable.y1,
@@ -158,14 +158,18 @@ export function deriveCutSequenceFromPlacements(
 
     // Horizontal cut (rip to width) — same rounding-tolerance rule as above.
     if (bottomEdge < usable.y1 - TRIM_EPS) {
-      steps.push({
-        stepNumber: stepNum++,
+      freeing.push({
+        stepNumber: 0,
         orientation: 'horizontal',
         kind: 'rip',
         x1: usable.x0, y1: bottomEdge, x2: usable.x1, y2: bottomEdge,
         segments: [{ x1: usable.x0, y1: bottomEdge, x2: usable.x1, y2: bottomEdge }],
       });
     }
+
+    // Rip-first puts the horizontal freeing cut ahead of the crosscut.
+    if (opts.firstCut === 'horizontal') freeing.reverse();
+    for (const step of freeing) steps.push({ ...step, stepNumber: stepNum++ });
 
     return { steps, isApproximate: false };
   }
@@ -335,7 +339,7 @@ export function deriveCutSequenceFromPlacements(
   const steps: CutStep[] = [...trimSteps];
   let isApproximate = false;
 
-  function planRegion(pieces: Placement[], region: Region): void {
+  function planRegion(pieces: Placement[], region: Region, isRoot = false): void {
     if (pieces.length <= 1) return;
 
     type Candidate = { orientation: 'horizontal' | 'vertical'; position: number; score: number };
@@ -413,9 +417,17 @@ export function deriveCutSequenceFromPlacements(
       return;
     }
 
+    // At the top level, honor the preferred first-cut direction whenever a
+    // clean cut that way exists; otherwise fall back to the best cut overall.
+    let pool = candidates;
+    if (isRoot && opts.firstCut) {
+      const preferred = candidates.filter((c) => c.orientation === opts.firstCut);
+      if (preferred.length > 0) pool = preferred;
+    }
+
     // Pick the highest-scoring cut
-    candidates.sort((a, b) => b.score - a.score);
-    const best = candidates[0];
+    pool.sort((a, b) => b.score - a.score);
+    const best = pool[0];
 
     // Emit cut segments for this region
     const segs = segmentsForCut(best.orientation, best.position, pieces, region, false);
@@ -447,7 +459,7 @@ export function deriveCutSequenceFromPlacements(
     }
   }
 
-  planRegion(placements, { x0: usable.x0, y0: usable.y0, x1: usable.x1, y1: usable.y1 });
+  planRegion(placements, { x0: usable.x0, y0: usable.y0, x1: usable.x1, y1: usable.y1 }, true);
   return { steps, isApproximate };
 }
 
@@ -464,14 +476,24 @@ export function reOptimizeAroundPinned(
   stockSheets: StockSheet[],
   pinnedPieces: Set<string>, // keys: "stockSheetId-sheetIndex:placementIndex"
   kerf: number,
-  panels: Panel[]
+  panels: Panel[],
+  cutPreference: CutPreference = 'auto'
 ): Solution {
-  // Rotation-lock map by panelId. A locked panel must keep its orientation, so
-  // both packing passes below skip rotated fits for it — mirroring the main
-  // solver (solver.ts) and improvement pass (improve.ts), which the anchored
-  // re-plan path previously did not honor.
-  const lockById = new Map<string, boolean>();
-  for (const p of panels) lockById.set(p.id, p.lockRotation);
+  // Grain setting by panelId. Both packing passes below only try orientations
+  // the panel's grain allows on this sheet, mirroring the main solver
+  // (solver.ts) and the improvement pass (improve.ts).
+  const grainById = new Map(panels.map((p) => [p.id, p.grain]));
+  const firstCut = preferredFirstCut(cutPreference);
+
+  // In this pass "bestRotated" means turned 90 degrees from the piece's current
+  // footprint, so map the grain rule (stated in absolute orientation) onto
+  // keeping or turning the current footprint.
+  function footprintOptions(piece: Placement, stock: StockSheet): { keep: boolean; turn: boolean } {
+    const allowed = allowedOrientations(grainById.get(piece.panelId) ?? 'any', stock);
+    const keep = piece.rotated ? allowed.rotated : allowed.normal;
+    const turn = piece.rotated ? allowed.normal : allowed.rotated;
+    return { keep, turn };
+  }
 
   const newSheets: SheetLayout[] = solution.sheets.map((sheet) => {
     const stockSheet = stockSheets.find((s) => s.id === sheet.stockSheetId);
@@ -514,7 +536,7 @@ export function reOptimizeAroundPinned(
       // the guillotine solver's edge accounting.
       const pw = panel.width;
       const ph = panel.height;
-      const canRotate = !(lockById.get(panel.panelId) ?? false);
+      const { keep, turn } = footprintOptions(panel, stockSheet);
 
       // Score each free rect by distance from preferred center
       let bestIdx = -1;
@@ -526,12 +548,12 @@ export function reOptimizeAroundPinned(
         const cx = r.x + r.w / 2;
         const cy = r.y + r.h / 2;
 
-        if (r.w >= pw - FIT_EPS && r.h >= ph - FIT_EPS) {
+        if (keep && r.w >= pw - FIT_EPS && r.h >= ph - FIT_EPS) {
           const score = dist2(cx, cy, panel.prefCX, panel.prefCY);
           if (score < bestScore) { bestScore = score; bestIdx = i; bestRotated = false; }
         }
-        // Try rotated — skipped for rotation-locked panels to preserve grain.
-        if (canRotate && r.w >= ph - FIT_EPS && r.h >= pw - FIT_EPS) {
+        // Try turned 90 degrees, only when the panel's grain allows it here.
+        if (turn && r.w >= ph - FIT_EPS && r.h >= pw - FIT_EPS) {
           const score = dist2(cx, cy, panel.prefCX, panel.prefCY);
           if (score < bestScore) { bestScore = score; bestIdx = i; bestRotated = true; }
         }
@@ -571,7 +593,7 @@ export function reOptimizeAroundPinned(
       // Raw fit — see Pass 1. Kerf is reserved on subtraction, not on the check.
       const pw = panel.width;
       const ph = panel.height;
-      const canRotate = !(lockById.get(panel.panelId) ?? false);
+      const { keep, turn } = footprintOptions(panel, stockSheet);
 
       let bestIdx = -1;
       let bestArea = Infinity;
@@ -579,12 +601,12 @@ export function reOptimizeAroundPinned(
 
       for (let i = 0; i < freeRects.length; i++) {
         const r = freeRects[i];
-        if (r.w >= pw - FIT_EPS && r.h >= ph - FIT_EPS) {
+        if (keep && r.w >= pw - FIT_EPS && r.h >= ph - FIT_EPS) {
           const area = r.w * r.h;
           if (area < bestArea) { bestArea = area; bestIdx = i; bestRotated = false; }
         }
-        // Rotated fit — skipped for rotation-locked panels to preserve grain.
-        if (canRotate && r.w >= ph - FIT_EPS && r.h >= pw - FIT_EPS) {
+        // Turned fit, only when the panel's grain allows it here.
+        if (turn && r.w >= ph - FIT_EPS && r.h >= pw - FIT_EPS) {
           const area = r.w * r.h;
           if (area < bestArea) { bestArea = area; bestIdx = i; bestRotated = true; }
         }
@@ -616,7 +638,7 @@ export function reOptimizeAroundPinned(
         top: stockSheet.trimTop,
         right: stockSheet.trimRight,
         bottom: stockSheet.trimBottom,
-      });
+      }, { firstCut });
 
     // Recalculate waste against usable area (excluding trim); reuse usableW/usableH from above
     const totalArea = usableW * usableH;
@@ -649,5 +671,6 @@ export function reOptimizeAroundPinned(
     totalWaste: totalArea > 0 ? ((totalArea - totalUsed) / totalArea) * 100 : 0,
     totalSheets: newSheets.length,
     unplacedPanels: solution.unplacedPanels,
+    cutOrder: evaluateCutOrder(newSheets, stockSheets, cutPreference),
   };
 }

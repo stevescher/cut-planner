@@ -13,6 +13,7 @@ function stock(id: string, overrides: Partial<StockSheet> = {}): StockSheet {
     trimRight: 0,
     trimBottom: 0,
     trimLeft: 0,
+    grainDirection: 'length',
     ...overrides,
   };
 }

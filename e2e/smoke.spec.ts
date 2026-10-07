@@ -43,8 +43,9 @@ test('sheet size preset dropdown opens and selecting a preset updates dimensions
 
   await presetTrigger.click();
 
-  // Preset options should appear in a listbox
-  const firstOption = page.getByRole('option').first();
+  // Preset options should appear in a listbox. Scope to it: the First cut
+  // setting is a native <select> whose hidden options also have role=option.
+  const firstOption = page.getByRole('listbox').getByRole('option').first();
   await expect(firstOption).toBeVisible();
 
   const presetText = (await firstOption.textContent()) ?? '';

@@ -1,16 +1,17 @@
 'use client';
 
 import { useCallback, useId, useRef, useState } from 'react';
-import { SheetLayout, StockSheet } from '@/lib/optimizer/types';
+import { SheetLayout, Solution, StockSheet } from '@/lib/optimizer/types';
 import { useViewStore } from '@/store/useViewStore';
 import { useDragStore } from '@/store/useDragStore';
 import { useLayoutStore } from '@/store/useLayoutStore';
 import { useHistoryStore } from '@/store/useHistoryStore';
 import { getColor } from '@/lib/colors';
 import { formatDisplay, unitSuffix } from '@/lib/fractions';
-import { pieceGrainAxis, sheetGrainAxis, isGrainMismatch } from '@/lib/grain';
+import { sheetGrainAxis, isGrainViolation, canRotatePlacement } from '@/lib/grain';
 import { useProjectStore } from '@/store/useProjectStore';
 import { deriveCutSequenceFromPlacements } from '@/lib/optimizer/reoptimize';
+import { evaluateCutOrder, preferredFirstCut } from '@/lib/optimizer/cut-order';
 import { Maximize2 } from 'lucide-react';
 
 interface SheetCanvasProps {
@@ -24,6 +25,15 @@ interface SheetCanvasProps {
 const PADDING = 40;
 const DEFAULT_MAX_WIDTH = 800;
 
+/** Re-check the edited solution's cut-order conformance after a manual move or rotate. */
+function withCutOrder(solutions: Solution[], activeIndex: number): Solution[] {
+  return solutions.map((sol, si) => {
+    if (si !== activeIndex || !sol.cutOrder) return sol;
+    const { stockSheets } = useProjectStore.getState();
+    return { ...sol, cutOrder: evaluateCutOrder(sol.sheets, stockSheets, sol.cutOrder.preference) };
+  });
+}
+
 export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, onExpand }: SheetCanvasProps) {
   const MAX_WIDTH = maxWidth ?? DEFAULT_MAX_WIDTH;
   // Unique per component instance so the thumbnail and lightbox canvases (same
@@ -32,6 +42,9 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
   const uid = useId().replace(/:/g, '');
   const { showLabels, viewMode, showCutSequence, showEdgeDims, showGrain, zoom } = useViewStore();
   const { units, panels } = useProjectStore();
+  const grainOf = (panelId: string) => panels.find((pl) => pl.id === panelId)?.grain ?? 'any';
+  // The sheet's real grain axis; every part cut from it carries this grain.
+  const sheetAxis = sheetGrainAxis(stockSheet);
   const fmt = (v: number) => formatDisplay(v, units);
   const sfx = unitSuffix(units);
   const monoMode = viewMode === 'mono';
@@ -187,7 +200,7 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
                 top: stockSheet.trimTop,
                 right: stockSheet.trimRight,
                 bottom: stockSheet.trimBottom,
-              });
+              }, { firstCut: preferredFirstCut(sol.cutOrder?.preference) });
             return {
               ...sheet,
               placements: newPlacements,
@@ -197,7 +210,7 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
           }),
         };
       });
-      layoutStore.updateSolutions(updatedSolutions);
+      layoutStore.updateSolutions(withCutOrder(updatedSolutions, layoutStore.activeSolutionIndex));
 
       if (!isPinned(sheetKey, placementIndex)) {
         togglePin(sheetKey, placementIndex);
@@ -291,7 +304,7 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
                 top: stockSheet.trimTop,
                 right: stockSheet.trimRight,
                 bottom: stockSheet.trimBottom,
-              });
+              }, { firstCut: preferredFirstCut(sol.cutOrder?.preference) });
             return {
               ...sheet,
               placements: newPlacements,
@@ -302,7 +315,7 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
         };
       });
 
-      layoutStore.updateSolutions(updatedSolutions);
+      layoutStore.updateSolutions(withCutOrder(updatedSolutions, layoutStore.activeSolutionIndex));
 
       // Auto-pin on rotate
       if (!isPinned(sheetKey, placementIndex)) {
@@ -332,7 +345,8 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
     (e: React.KeyboardEvent, placementIndex: number) => {
       const p = sheetLayout.placements[placementIndex];
       const label = p.label || `Panel ${placementIndex + 1}`;
-      const rotationLocked = panels.find((pl) => pl.id === p.panelId)?.lockRotation ?? false;
+      const grain = panels.find((pl) => pl.id === p.panelId)?.grain ?? 'any';
+      const rotationLocked = !canRotatePlacement(p, grain, stockSheet);
 
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
@@ -341,7 +355,7 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
         // but stopping propagation keeps this control self-contained.
         e.stopPropagation();
         if (rotationLocked) {
-          setAnnouncement(`${label} rotation is locked`);
+          setAnnouncement(`${label} can't rotate: its grain setting fixes its orientation on this sheet`);
         } else {
           handleRotate(e, placementIndex);
           setAnnouncement(`${label} rotated`);
@@ -454,8 +468,8 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
         {/* Sheet grain indicator — a double-headed arrow along the sheet grain
             axis, anchored just inside the top-left of the sheet, with a "grain"
             label. Tells the woodworker which way the stock grain runs. */}
-        {showGrain && (() => {
-          const axis = sheetGrainAxis(stockSheet);
+        {showGrain && sheetAxis && (() => {
+          const axis = sheetAxis;
           const ox = PADDING + 14;
           const oy = PADDING + 14;
           const len = 34;
@@ -557,20 +571,23 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
           // For small pieces, float the button above-left the piece; otherwise inside bottom-left
           const rotateBtnX = smallPiece ? px + rotateBtnSize : px + rotateBtnSize + 3;
           const rotateBtnY = smallPiece ? py - rotateBtnSize - 2 : py + ph - rotateBtnSize - 3;
-          const rotationLocked = panels.find(pl => pl.id === p.panelId)?.lockRotation ?? false;
+          const rotationLocked = !canRotatePlacement(p, grainOf(p.panelId), stockSheet);
 
-          const grainAxis = pieceGrainAxis(p);
-          const grainMismatch = isGrainMismatch(p, stockSheet, rotationLocked);
-          const grainPatternId = grainMismatch
-            ? `grain-mismatch-${grainAxis}-${uid}`
-            : `grain-${grainAxis}-${uid}`;
+          // Hatching shows the grain the cut part will actually have (the
+          // sheet's), amber where that contradicts the part's grain setting.
+          const grainMismatch = isGrainViolation(p, grainOf(p.panelId), stockSheet);
+          const grainPatternId = sheetAxis
+            ? grainMismatch
+              ? `grain-mismatch-${sheetAxis}-${uid}`
+              : `grain-${sheetAxis}-${uid}`
+            : null;
 
           const pieceLabel = p.label || `Panel ${i + 1}`;
-          const rotateHint = rotationLocked ? 'rotation is locked' : 'Enter to rotate';
+          const rotateHint = rotationLocked ? 'rotation is fixed by its grain setting' : 'Enter to rotate';
           const pinHint = pinned ? 'P to unpin' : 'P to pin';
           const pieceDescription =
             `${pieceLabel}, ${fmt(p.width)}${sfx} by ${fmt(p.height)}${sfx}` +
-            `${pinned ? ', pinned' : ''}${rotationLocked ? ', rotation locked' : ''}. ` +
+            `${pinned ? ', pinned' : ''}${grainMismatch ? ', placed against its grain setting' : ''}. ` +
             `Use arrow keys to move, ${rotateHint}, ${pinHint}.`;
 
           return (
@@ -595,7 +612,7 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
               {/* Grain hatch overlay — directional lines fill the piece along its
                   grain axis; amber when the grain is perpendicular to the sheet
                   grain (a mismatch worth catching before cutting). */}
-              {showGrain && (
+              {showGrain && grainPatternId && (
                 <rect
                   x={px} y={py} width={pw} height={ph}
                   fill={`url(#${grainPatternId})`}
@@ -833,15 +850,14 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
 
       {/* ── Grain mismatch notice ───────────────────────────────────────── */}
       {showGrain && (() => {
-        const mismatches = sheetLayout.placements.filter((p) => {
-          const locked = panels.find((pl) => pl.id === p.panelId)?.lockRotation ?? false;
-          return isGrainMismatch(p, stockSheet, locked);
-        }).length;
+        const mismatches = sheetLayout.placements.filter((p) =>
+          isGrainViolation(p, grainOf(p.panelId), stockSheet),
+        ).length;
         if (mismatches === 0) return null;
         return (
           <p className="mt-1 text-xs text-amber-700 dark:text-amber-400 flex items-center gap-1">
             <span aria-hidden>⚠</span>
-            {mismatches} piece{mismatches !== 1 ? 's' : ''} placed cross-grain (grain runs perpendicular to the sheet grain). Rotate to align if grain direction matters for this cut.
+            {mismatches} piece{mismatches !== 1 ? 's' : ''} placed against {mismatches !== 1 ? 'their' : 'its'} grain setting. Rotate to align, or re-plan.
           </p>
         );
       })()}

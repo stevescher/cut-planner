@@ -21,6 +21,7 @@ function stock(overrides: Partial<StockSheet> = {}): StockSheet {
     trimRight: 0,
     trimBottom: 0,
     trimLeft: 0,
+    grainDirection: 'length',
     ...overrides,
   };
 }
@@ -32,7 +33,7 @@ function panel(overrides: Partial<Panel> = {}): Panel {
     length: 24,
     width: 12,
     quantity: 1,
-    lockRotation: false,
+    grain: 'any',
     ...overrides,
   };
 }
@@ -59,7 +60,7 @@ function countPieces(sol: Solution): number {
 // ── Score helpers ─────────────────────────────────────────────────────────────
 
 describe('compareScores / bestOf', () => {
-  const base = { unplaced: 0, totalSheets: 2, orientationPenalty: 0, wasteBucket: 40, totalCuts: 5, exactWaste: 40 };
+  const base = { unplaced: 0, hardCutOrder: 0, totalSheets: 2, softCutOrder: 0, orientationPenalty: 0, wasteBucket: 40, totalCuts: 5, exactWaste: 40 };
 
   it('ranks fewer sheets first', () => {
     expect(compareScores({ ...base, totalSheets: 1 }, base)).toBeLessThan(0);
@@ -102,9 +103,9 @@ describe('improveSolution never ranks worse than the greedy baseline', () => {
       panels: [panel({ id: 'a', length: 22, width: 22, quantity: 6 })],
     },
     {
-      name: 'rotation-locked parts',
+      name: 'follow-grain parts',
       sheets: [stock()],
-      panels: [panel({ id: 'a', length: 30, width: 10, quantity: 8, lockRotation: true })],
+      panels: [panel({ id: 'a', length: 30, width: 10, quantity: 8, grain: 'follow' })],
     },
   ];
 
@@ -270,7 +271,8 @@ describe('sheet-elimination respects sheet boundaries (OPUS-399)', () => {
  * separates them, so `deriveCutSequenceFromPlacements` returns an approximate
  * sequence (a cut line would pass through a part).
  *
- * Arms (rotation-locked so the relocation can't re-orient into a clean tiling):
+ * Arms (follow-grain on a length-grain sheet, so the relocation can't re-orient
+ * into a clean tiling):
  *   a  (0,0)  30×10   — top
  *   b  (30,0) 10×30   — right
  *   c  (10,30) 30×10  — bottom
@@ -284,10 +286,10 @@ describe('sheet-elimination respects sheet boundaries (OPUS-399)', () => {
 function pinwheelTwoSheet(): { solution: Solution; sheets: StockSheet[]; panels: Panel[] } {
   const sheets = [stock({ id: 's1', length: 40, width: 40 })];
   const panels = [
-    panel({ id: 'a', label: 'a', length: 30, width: 10, quantity: 1, lockRotation: true }),
-    panel({ id: 'b', label: 'b', length: 10, width: 30, quantity: 1, lockRotation: true }),
-    panel({ id: 'c', label: 'c', length: 30, width: 10, quantity: 1, lockRotation: true }),
-    panel({ id: 'd', label: 'd', length: 10, width: 30, quantity: 1, lockRotation: true }),
+    panel({ id: 'a', label: 'a', length: 30, width: 10, quantity: 1, grain: 'follow' }),
+    panel({ id: 'b', label: 'b', length: 10, width: 30, quantity: 1, grain: 'follow' }),
+    panel({ id: 'c', label: 'c', length: 30, width: 10, quantity: 1, grain: 'follow' }),
+    panel({ id: 'd', label: 'd', length: 10, width: 30, quantity: 1, grain: 'follow' }),
   ];
   const p = (id: string, x: number, y: number, w: number, h: number): Placement => ({
     panelId: id, label: id, x, y, width: w, height: h,

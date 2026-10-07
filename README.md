@@ -35,6 +35,9 @@ A web-based plywood and sheet goods cutlist optimizer. Enter your stock sheet di
 | **Stock sheet entry** | Preset sizes (4×8, 5×5, 2×4, etc. / metric equivalents) or custom dimensions. Per-sheet label, quantity, and optional edge trim (top/right/bottom/left) |
 | **Panel entry** | Label, length, width, quantity. Color-coded dots match layout colors |
 | **Kerf setting** | Blade kerf in inches or mm — deducted from every cut edge automatically |
+| **Grain direction** | Each stock sheet's grain runs along its length, along its width, or none (MDF, particleboard, solid melamine). Each panel's grain runs along its length, across it, or doesn't matter (hidden parts), and the optimizer only places parts in orientations their grain allows |
+| **First cut** | Auto, Favor or Always rip-first, Favor or Always crosscut-first. "Favor" never costs a sheet; "Always" is required even at a material cost |
+| **Constraint cost** | After planning, re-solves without the grain and first-cut settings and shows what each costs (for example "+1 sheet (+$68.00)") |
 | **Plan Cuts** | Runs 15 packing strategies simultaneously, returns top results sorted by waste |
 | **Layout alternatives** | Up to 5 solutions shown as numbered pills; "More Layouts" pill (next to the numbered pills) reveals additional strategies |
 | **Zoom** | − / % / + zoom controls (50–300%) in the diagram top bar; scales all sheet canvases |
@@ -497,7 +500,7 @@ Vercel reads the `build` script from `package.json`:
 
 **No greedy-selection backtracking:** The solver is a heuristic sweep (first-fit-decreasing across ~19 strategies) with no local-search improvement pass, so it can leave material on the table on hard instances.
 
-> Note: `solveAll()` now runs off the main thread in a `comlink` Web Worker (`src/lib/optimizer/optimizer.worker.ts`) with a synchronous main-thread fallback. Per-panel grain direction is supported via the per-panel rotation lock.
+> Note: `solveAll()` now runs off the main thread in a `comlink` Web Worker (`src/lib/optimizer/optimizer.worker.ts`) with a synchronous main-thread fallback. Grain direction is a per-sheet and per-panel setting (see Features).
 
 ### Planned additions
 
@@ -509,4 +512,4 @@ Vercel reads the `build` script from `package.json`:
 | **Remnant tracking** | Mark offcuts as new stock sheets for future projects |
 | **CSV/Excel import** | Bulk panel entry from a spreadsheet |
 | **Edge banding** | Tag which panel edges need banding; surface in the cut list |
-| **Grain / face direction** | Constrain rotation for grain-matched assemblies |
+| **Grain-matched groups** | Keep drawer fronts in sequence from one strip so the figure flows across the bank |

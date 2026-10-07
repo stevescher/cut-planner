@@ -1,7 +1,15 @@
 import { nanoid } from 'nanoid';
-import { Solution, SheetLayout, StockSheet, Panel, Placement } from './types';
+import { Solution, SheetLayout, StockSheet, Panel, Placement, PanelGrain, CutPreference } from './types';
 import { FIT_EPS } from './guillotine';
 import { deriveCutSequenceFromPlacements } from './reoptimize';
+import { allowedOrientations } from '../grain';
+import {
+  CutAxis,
+  evaluateCutOrder,
+  isHardCutPreference,
+  preferredFirstCut,
+  sheetAllowsFirstCut,
+} from './cut-order';
 import { FreeRect, freeRectsForSheet, reserveWithKerf, pruneContained } from './freerect';
 
 /**
@@ -25,7 +33,11 @@ import { FreeRect, freeRectsForSheet, reserveWithKerf, pruneContained } from './
 
 export interface SolutionScore {
   unplaced: number;
+  /** Sheets breaking an 'always-*' cut preference. Outranks sheet count. */
+  hardCutOrder: number;
   totalSheets: number;
+  /** Sheets breaking a 'favor-*' cut preference. Ranks just below sheet count. */
+  softCutOrder: number;
   orientationPenalty: number;
   wasteBucket: number;
   totalCuts: number;
@@ -49,9 +61,13 @@ function orientationInconsistency(solution: Solution): number {
 
 /** Score a solution on the same lexicographic objective solveAll sorts by. */
 export function scoreSolution(solution: Solution): SolutionScore {
+  const mismatched = solution.cutOrder?.mismatchedSheets ?? 0;
+  const hard = isHardCutPreference(solution.cutOrder?.preference);
   return {
     unplaced: solution.unplacedPanels.reduce((sum, p) => sum + p.quantity, 0),
+    hardCutOrder: hard ? mismatched : 0,
     totalSheets: solution.totalSheets,
+    softCutOrder: hard ? 0 : mismatched,
     orientationPenalty: orientationInconsistency(solution),
     wasteBucket: Math.round(solution.totalWaste),
     totalCuts: solution.sheets.reduce((sum, sh) => sum + sh.cutSequence.length, 0),
@@ -62,7 +78,9 @@ export function scoreSolution(solution: Solution): SolutionScore {
 /** Negative when `a` is strictly better than `b` (same order as solveAll's sort). */
 export function compareScores(a: SolutionScore, b: SolutionScore): number {
   if (a.unplaced !== b.unplaced) return a.unplaced - b.unplaced;
+  if (a.hardCutOrder !== b.hardCutOrder) return a.hardCutOrder - b.hardCutOrder;
   if (a.totalSheets !== b.totalSheets) return a.totalSheets - b.totalSheets;
+  if (a.softCutOrder !== b.softCutOrder) return a.softCutOrder - b.softCutOrder;
   if (a.orientationPenalty !== b.orientationPenalty) return a.orientationPenalty - b.orientationPenalty;
   if (a.wasteBucket !== b.wasteBucket) return a.wasteBucket - b.wasteBucket;
   if (a.totalCuts !== b.totalCuts) return a.totalCuts - b.totalCuts;
@@ -85,19 +103,23 @@ interface WorkingSheet {
 
 /** Try to place one piece into a sheet's free rectangles. Returns the committed
  *  placement (with updated x/y/width/height/rotated) or null if it doesn't fit.
- *  Respects the panel's rotation lock. Best-area-fit selection. */
+ *  Only tries orientations the panel's grain allows on this target sheet, which
+ *  can differ from the sheet the piece came from. Best-area-fit selection. */
 function tryPlace(
   ws: WorkingSheet,
   piece: Placement,
-  canRotate: boolean,
+  grain: PanelGrain,
   kerf: number,
 ): Placement | null {
-  // The piece's current on-sheet footprint, and its rotated footprint.
-  const dims: Array<{ w: number; h: number; rotated: boolean }> = [
-    { w: piece.width, h: piece.height, rotated: piece.rotated },
-  ];
-  if (canRotate && Math.abs(piece.width - piece.height) > FIT_EPS) {
-    dims.push({ w: piece.height, h: piece.width, rotated: !piece.rotated });
+  const allowed = allowedOrientations(grain, ws.stock);
+  // Unrotated footprint: the panel's length along X.
+  const unW = piece.rotated ? piece.height : piece.width;
+  const unH = piece.rotated ? piece.width : piece.height;
+  const dims: Array<{ w: number; h: number; rotated: boolean }> = [];
+  if (allowed.normal) dims.push({ w: unW, h: unH, rotated: false });
+  // A square piece needs only one footprint unless grain forces the rotated one.
+  if (allowed.rotated && !(allowed.normal && Math.abs(unW - unH) <= FIT_EPS)) {
+    dims.push({ w: unH, h: unW, rotated: true });
   }
 
   let best: { rect: FreeRect; w: number; h: number; rotated: boolean; leftover: number } | null = null;
@@ -132,14 +154,14 @@ function tryPlace(
   return placed;
 }
 
-function rebuildLayout(ws: WorkingSheet): SheetLayout {
+function rebuildLayout(ws: WorkingSheet, firstCut: CutAxis | null): SheetLayout {
   const { steps: cutSequence, isApproximate: cutSequenceApproximate } =
     deriveCutSequenceFromPlacements(ws.placements, ws.stock.length, ws.stock.width, {
       left: ws.stock.trimLeft,
       top: ws.stock.trimTop,
       right: ws.stock.trimRight,
       bottom: ws.stock.trimBottom,
-    });
+    }, { firstCut });
   const usableL = ws.stock.length - ws.stock.trimLeft - ws.stock.trimRight;
   const usableW = ws.stock.width - ws.stock.trimTop - ws.stock.trimBottom;
   const totalArea = usableL * usableW;
@@ -154,7 +176,12 @@ function rebuildLayout(ws: WorkingSheet): SheetLayout {
   };
 }
 
-function rebuildSolution(sheets: SheetLayout[], stockSheets: StockSheet[], base: Solution): Solution {
+function rebuildSolution(
+  sheets: SheetLayout[],
+  stockSheets: StockSheet[],
+  base: Solution,
+  cutPreference: CutPreference,
+): Solution {
   const totalArea = sheets.reduce((s, sl) => {
     const ss = stockSheets.find((x) => x.id === sl.stockSheetId);
     if (!ss) return s;
@@ -167,6 +194,7 @@ function rebuildSolution(sheets: SheetLayout[], stockSheets: StockSheet[], base:
     sheets,
     totalSheets: sheets.length,
     totalWaste: totalArea > 0 ? ((totalArea - totalUsed) / totalArea) * 100 : 0,
+    cutOrder: evaluateCutOrder(sheets, stockSheets, cutPreference),
   };
 }
 
@@ -180,10 +208,13 @@ export function improveSolution(
   stockSheets: StockSheet[],
   panels: Panel[],
   kerf: number,
-  opts: { maxPasses?: number } = {},
+  opts: { maxPasses?: number; cutPreference?: CutPreference } = {},
 ): Solution {
   const maxPasses = opts.maxPasses ?? 8;
-  const lockById = new Map(panels.map((p) => [p.id, p.lockRotation]));
+  const cutPreference = opts.cutPreference ?? 'auto';
+  const firstCut = preferredFirstCut(cutPreference);
+  const hardCutOrder = isHardCutPreference(cutPreference);
+  const grainById = new Map(panels.map((p) => [p.id, p.grain]));
 
   // Work on a mutable copy of the sheet list.
   let sheets: SheetLayout[] = solution.sheets.map((s) => ({
@@ -231,18 +262,18 @@ export function improveSolution(
       const committed: WorkingSheet[] = others;
       let allMoved = true;
       for (const piece of toMove) {
-        const canRotate = !(lockById.get(piece.panelId) ?? false);
+        const grain = grainById.get(piece.panelId) ?? 'any';
         let placed = false;
         // Prefer the fullest sheet that still has room (keeps offcuts consolidated).
         for (const ws of [...committed].sort((a, b) => b.placements.length - a.placements.length)) {
-          if (tryPlace(ws, piece, canRotate, kerf)) { placed = true; break; }
+          if (tryPlace(ws, piece, grain, kerf)) { placed = true; break; }
         }
         if (!placed) { allMoved = false; break; }
       }
 
       if (allMoved) {
         // Rebuild the surviving sheets and derive their cut sequences.
-        const rebuilt = committed.map((ws) => rebuildLayout(ws));
+        const rebuilt = committed.map((ws) => rebuildLayout(ws, firstCut));
 
         // Guard (OPUS-398): a relocation can pack pieces into a non-guillotine
         // arrangement (e.g. a pinwheel), whose derived cut sequence is only an
@@ -253,6 +284,18 @@ export function improveSolution(
         // next target instead; the guillotine-valid baseline is kept.
         if (rebuilt.some((s) => s.cutSequenceApproximate)) {
           continue;
+        }
+
+        // An 'always-*' cut preference is a hard rule: never trade it for a
+        // sheet. Reject an elimination that leaves a sheet unable to start
+        // with the required cut, unless that sheet already broke it.
+        if (hardCutOrder && firstCut) {
+          const breaks = committed.some((ws, k) => {
+            const before = sheetAllowsFirstCut(ws.layout.placements, ws.stock, firstCut);
+            const after = sheetAllowsFirstCut(rebuilt[k].placements, ws.stock, firstCut);
+            return before && !after;
+          });
+          if (breaks) continue;
         }
 
         // Commit: drop the emptied sheet, keep the rebuilt (guillotine-valid) ones.
@@ -266,7 +309,7 @@ export function improveSolution(
     if (!eliminated) break; // converged — no sheet could be emptied this pass
   }
 
-  const improved = rebuildSolution(sheets, stockSheets, solution);
+  const improved = rebuildSolution(sheets, stockSheets, solution, cutPreference);
   // Final guard: never return something worse than the input.
   return bestOf(solution, improved);
 }

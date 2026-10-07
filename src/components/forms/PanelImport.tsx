@@ -189,7 +189,7 @@ export function PanelImport({ onClose }: PanelImportProps) {
       length: r.length,
       width: r.width,
       quantity: r.qty,
-      lockRotation: false,
+      grain: 'follow',
     }));
 
     const store = useProjectStore.getState();

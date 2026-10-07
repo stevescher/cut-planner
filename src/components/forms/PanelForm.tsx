@@ -4,26 +4,36 @@ import { useState } from 'react';
 import { useProjectStore } from '@/store/useProjectStore';
 import { NumberInput } from './NumberInput';
 import { Input } from '@/components/ui/input';
-import { Plus, Trash2, Lock, Unlock, Upload } from 'lucide-react';
+import { Plus, Trash2, Upload, ArrowLeftRight, ArrowUpDown, Shuffle } from 'lucide-react';
 import { getColor } from '@/lib/colors';
+import { sheetHasGrain } from '@/lib/grain';
+import { PanelGrain } from '@/lib/optimizer/types';
 import { PanelImport } from './PanelImport';
 
 /** Matches the import validator's ceiling (src/lib/project-io.ts). */
 const MAX_DIMENSION = 10_000;
 
+/** Grain settings in click order, with how each is shown and described. */
+const GRAIN_STATES: Record<PanelGrain, { next: PanelGrain; Icon: typeof Shuffle; text: string }> = {
+  follow: { next: 'across', Icon: ArrowLeftRight, text: 'Grain runs along the length' },
+  across: { next: 'any', Icon: ArrowUpDown, text: 'Grain runs across, along the width' },
+  any: { next: 'follow', Icon: Shuffle, text: "Grain doesn't matter, so it can rotate freely" },
+};
+
 export function PanelForm() {
-  const { panels, addPanel, updatePanel, removePanel, units } = useProjectStore();
+  const { panels, addPanel, updatePanel, removePanel, units, stockSheets } = useProjectStore();
   const [showImport, setShowImport] = useState(false);
+  const anyGrain = stockSheets.some(sheetHasGrain);
 
   return (
     <div className="space-y-1.5">
       {/* Column headers (align with the dimension row below the label) */}
-      <div className="grid grid-cols-[minmax(0,1fr)_64px_64px_40px_24px_24px] gap-2 px-2 pb-0.5">
+      <div className="grid grid-cols-[minmax(0,1fr)_64px_64px_40px_32px_24px] gap-2 px-2 pb-0.5">
         <span className="field-label">Label</span>
         <span className="field-label">Length</span>
         <span className="field-label">Width</span>
         <span className="field-label">Qty</span>
-        <span />
+        <span className="field-label">Grain</span>
         <span />
       </div>
 
@@ -50,7 +60,7 @@ export function PanelForm() {
             </div>
 
             {/* Dimensions + controls row */}
-            <div className="grid grid-cols-[minmax(0,1fr)_64px_64px_40px_24px_24px] gap-2 items-center">
+            <div className="grid grid-cols-[minmax(0,1fr)_64px_64px_40px_32px_24px] gap-2 items-center">
             <span />
             <NumberInput
               value={panel.length}
@@ -79,25 +89,30 @@ export function PanelForm() {
               aria-label={`${panel.label || `Panel ${idx + 1}`} quantity`}
               className="h-8 text-sm"
             />
-            {/* Lock rotation toggle */}
-            <button
-              onClick={() => updatePanel(panel.id, { lockRotation: !panel.lockRotation })}
-              title={panel.lockRotation ? 'Rotation locked — click to allow' : 'Click to lock grain direction'}
-              aria-label={
-                panel.lockRotation
-                  ? `Rotation locked for ${panel.label || `Panel ${idx + 1}`} — click to allow`
-                  : `Lock grain direction for ${panel.label || `Panel ${idx + 1}`}`
-              }
-              aria-pressed={panel.lockRotation}
-              className={`h-6 w-6 rounded flex items-center justify-center transition-colors
-                ${panel.lockRotation
-                  ? 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-muted'}`}
-            >
-              {panel.lockRotation
-                ? <Lock className="h-3 w-3" />
-                : <Unlock className="h-3 w-3" />}
-            </button>
+            {/* Grain setting: click to cycle along / across / any */}
+            {(() => {
+              const state = GRAIN_STATES[panel.grain];
+              const name = panel.label || `Panel ${idx + 1}`;
+              const effect = anyGrain
+                ? ''
+                : ' No stock sheet has grain set, so this has no effect yet.';
+              const constrained = anyGrain && panel.grain !== 'any';
+              return (
+                <button
+                  type="button"
+                  onClick={() => updatePanel(panel.id, { grain: state.next })}
+                  title={`${state.text}. Click to change.${effect}`}
+                  aria-label={`${name} grain: ${state.text}.${effect} Click to change.`}
+                  className={`h-6 w-8 rounded flex items-center justify-center transition-colors
+                    ${constrained
+                      ? 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted'}
+                    ${anyGrain ? '' : 'opacity-60'}`}
+                >
+                  <state.Icon className="h-3 w-3" />
+                </button>
+              );
+            })()}
             <button
               onClick={() => removePanel(panel.id)}
               disabled={panels.length <= 1}

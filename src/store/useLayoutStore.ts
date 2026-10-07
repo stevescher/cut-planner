@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { Solution } from '@/lib/optimizer/types';
+import { ConstraintCosts } from '@/lib/constraint-cost';
 import { useChecklistStore } from './useChecklistStore';
 
 interface LayoutState {
@@ -8,11 +9,18 @@ interface LayoutState {
   isOptimizing: boolean;
   /** How many solutions have been revealed (for shuffle) */
   revealedCount: number;
+  /**
+   * What the grain and cut-order settings cost the best layout of the current
+   * plan, from re-solving with each relaxed. Null until computed, and cleared
+   * by any fresh plan.
+   */
+  constraintCosts: ConstraintCosts | null;
 
   setSolutions: (solutions: Solution[]) => void;
   updateSolutions: (solutions: Solution[]) => void;
   setActive: (index: number) => void;
   setOptimizing: (optimizing: boolean) => void;
+  setConstraintCosts: (costs: ConstraintCosts | null) => void;
   shuffleNext: () => void;
   reset: () => void;
 }
@@ -22,6 +30,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
   activeSolutionIndex: 0,
   isOptimizing: false,
   revealedCount: 3,
+  constraintCosts: null,
 
   setSolutions: (solutions) => {
     // A fresh plan invalidates any checked-off pieces from the previous one.
@@ -30,6 +39,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
       solutions,
       activeSolutionIndex: 0,
       revealedCount: Math.min(3, solutions.length),
+      constraintCosts: null,
     });
   },
 
@@ -43,6 +53,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
 
   setActive: (index) => set({ activeSolutionIndex: index }),
   setOptimizing: (optimizing) => set({ isOptimizing: optimizing }),
+  setConstraintCosts: (constraintCosts) => set({ constraintCosts }),
 
   shuffleNext: () => {
     const { solutions, revealedCount } = get();
@@ -58,6 +69,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
       activeSolutionIndex: 0,
       isOptimizing: false,
       revealedCount: 3,
+      constraintCosts: null,
     });
   },
 }));

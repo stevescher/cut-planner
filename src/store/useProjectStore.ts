@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { nanoid } from 'nanoid';
-import { StockSheet, Panel, ProjectData } from '@/lib/optimizer/types';
+import { StockSheet, Panel, ProjectData, CutPreference } from '@/lib/optimizer/types';
 import { Units } from '@/lib/fractions';
 
 interface ProjectState {
@@ -9,9 +9,11 @@ interface ProjectState {
   panels: Panel[];
   kerf: number;
   units: Units;
+  cutPreference: CutPreference;
 
   setProjectName: (name: string) => void;
   setKerf: (kerf: number) => void;
+  setCutPreference: (pref: CutPreference) => void;
   setUnits: (units: Units) => void;
 
   addStockSheet: (sheet?: Partial<StockSheet>) => void;
@@ -40,6 +42,9 @@ function createDefaultStockSheet(overrides?: Partial<StockSheet>): StockSheet {
     trimRight: 0,
     trimBottom: 0,
     trimLeft: 0,
+    // Grainless until the user says otherwise: forcing grain onto MDF and
+    // hidden parts is the top complaint about cut-list optimizers.
+    grainDirection: 'none',
     ...overrides,
   };
 }
@@ -51,7 +56,7 @@ function createDefaultPanel(overrides?: Partial<Panel>): Panel {
     length: 0,
     width: 0,
     quantity: 1,
-    lockRotation: false,
+    grain: 'follow',
     ...overrides,
   };
 }
@@ -62,9 +67,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   panels: [createDefaultPanel()],
   kerf: 0.125, // 1/8 inch
   units: 'imperial' as Units,
+  cutPreference: 'auto' as CutPreference,
 
   setProjectName: (name) => set({ projectName: name }),
   setKerf: (kerf) => set({ kerf }),
+  setCutPreference: (cutPreference) => set({ cutPreference }),
   setUnits: (units) => set({ units }),
 
   addStockSheet: (sheet) =>
@@ -106,11 +113,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   getProjectData: () => {
     const state = get();
     return {
-      version: 1 as const,
+      version: 2 as const,
       name: state.projectName,
       stockSheets: state.stockSheets,
       panels: state.panels,
       kerf: state.kerf,
+      cutPreference: state.cutPreference,
       units: state.units,
       savedAt: new Date().toISOString(),
     };
@@ -123,6 +131,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       panels: data.panels,
       kerf: data.kerf,
       units: data.units,
+      cutPreference: data.cutPreference,
     }),
 
   reset: () =>
@@ -131,5 +140,6 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       stockSheets: [createDefaultStockSheet()],
       panels: [createDefaultPanel()],
       kerf: s.units === 'metric' ? 3 / 25.4 : 0.125,
+      cutPreference: 'auto' as CutPreference,
     })),
 }));

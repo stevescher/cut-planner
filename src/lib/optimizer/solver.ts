@@ -2,15 +2,19 @@ import { nanoid } from 'nanoid';
 import {
   StockSheet,
   Panel,
+  PanelGrain,
   Solution,
   SheetLayout,
   PackingStrategy,
   GuillotineNode,
+  CutPreference,
 } from './types';
 import { createTree, placeInTree, collectPlacements, FIT_EPS } from './guillotine';
 import { deriveCutSequenceFromPlacements } from './reoptimize';
 import { generateStrategies, sortPanels } from './strategies';
 import { getColor } from '../colors';
+import { solverOrientations } from '../grain';
+import { evaluateCutOrder, isHardCutPreference, preferredFirstCut } from './cut-order';
 import { improveSolution, scoreSolution, compareScores } from './improve';
 
 interface ExpandedPanel {
@@ -19,7 +23,7 @@ interface ExpandedPanel {
   length: number;
   width: number;
   originalIndex: number;
-  lockRotation: boolean;
+  grain: PanelGrain;
 }
 
 interface OpenSheet {
@@ -41,7 +45,7 @@ function expandPanels(panels: Panel[]): ExpandedPanel[] {
         length: panel.length,
         width: panel.width,
         originalIndex: idx,
-        lockRotation: panel.lockRotation,
+        grain: panel.grain,
       });
     }
   });
@@ -61,7 +65,8 @@ function solveWithStrategy(
   stockSheets: StockSheet[],
   panels: Panel[],
   kerf: number,
-  strategy: PackingStrategy
+  strategy: PackingStrategy,
+  cutPreference: CutPreference
 ): Solution {
   const expanded = expandPanels(panels.filter((p) => p.length > 0 && p.width > 0));
 
@@ -83,7 +88,7 @@ function solveWithStrategy(
     .filter((s) => s.length > 0 && s.width > 0)
     .sort((a, b) => a.length * a.width - b.length * b.width); // smallest first to minimize waste
 
-  function openNewSheet(minLength: number, minWidth: number, canRotate: boolean): OpenSheet | null {
+  function openNewSheet(minLength: number, minWidth: number, grain: PanelGrain): OpenSheet | null {
     // Find the smallest stock sheet that can fit the piece
     for (const ss of availableSheets) {
       const usable = getUsableDimensions(ss);
@@ -92,10 +97,12 @@ function solveWithStrategy(
 
       // Use the same tolerance the tree placement uses, so a piece the tree
       // would accept (e.g. an exact metric fit off by float drift) also opens
-      // a sheet instead of being reported unplaced.
+      // a sheet instead of being reported unplaced. Only orientations the
+      // panel's grain allows on this particular sheet count.
+      const o = solverOrientations(grain, ss, strategy.allowRotation);
       const fits =
-        (usable.length >= minLength - FIT_EPS && usable.width >= minWidth - FIT_EPS) ||
-        (canRotate &&
+        (o.normal && usable.length >= minLength - FIT_EPS && usable.width >= minWidth - FIT_EPS) ||
+        (o.rotated &&
           usable.length >= minWidth - FIT_EPS &&
           usable.width >= minLength - FIT_EPS);
 
@@ -126,10 +133,8 @@ function solveWithStrategy(
     const color = getColor(panel.originalIndex);
     let placed = false;
 
-    // Per-piece rotation: strategy may allow rotation, but lockRotation overrides it
-    const allowRotation = strategy.allowRotation && !panel.lockRotation;
-
-    // Try existing open sheets
+    // Try existing open sheets. Allowed orientations depend on each sheet's
+    // grain, so they are worked out per sheet.
     for (const os of openSheets) {
       const placement = placeInTree(
         os.tree,
@@ -138,8 +143,9 @@ function solveWithStrategy(
         kerf,
         strategy.selectionRule,
         strategy.splitRule,
-        allowRotation,
-        { panelId: panel.panelId, label: panel.label, color }
+        solverOrientations(panel.grain, os.stockSheet, strategy.allowRotation),
+        { panelId: panel.panelId, label: panel.label, color },
+        strategy.firstStage
       );
       if (placement) {
         placed = true;
@@ -149,7 +155,7 @@ function solveWithStrategy(
 
     // Open a new sheet if needed
     if (!placed) {
-      const newSheet = openNewSheet(pieceW, pieceH, allowRotation);
+      const newSheet = openNewSheet(pieceW, pieceH, panel.grain);
       if (newSheet) {
         const placement = placeInTree(
           newSheet.tree,
@@ -158,8 +164,9 @@ function solveWithStrategy(
           kerf,
           strategy.selectionRule,
           strategy.splitRule,
-          allowRotation,
-          { panelId: panel.panelId, label: panel.label, color }
+          solverOrientations(panel.grain, newSheet.stockSheet, strategy.allowRotation),
+          { panelId: panel.panelId, label: panel.label, color },
+          strategy.firstStage
         );
         if (placement) {
           placed = true;
@@ -188,7 +195,7 @@ function solveWithStrategy(
         top: os.stockSheet.trimTop,
         right: os.stockSheet.trimRight,
         bottom: os.stockSheet.trimBottom,
-      });
+      }, { firstCut: preferredFirstCut(cutPreference) });
     const usableL = os.stockSheet.length - os.stockSheet.trimLeft - os.stockSheet.trimRight;
     const usableW = os.stockSheet.width - os.stockSheet.trimTop - os.stockSheet.trimBottom;
     const totalArea = usableL * usableW;
@@ -228,37 +235,8 @@ function solveWithStrategy(
     totalWaste,
     totalSheets: sheetLayouts.length,
     unplacedPanels: unplaced,
+    cutOrder: evaluateCutOrder(sheetLayouts, stockSheets, cutPreference),
   };
-}
-
-/** Total number of saw cuts across every sheet in a solution (fewer is better) */
-function countCuts(solution: Solution): number {
-  return solution.sheets.reduce((sum, sh) => sum + sh.cutSequence.length, 0);
-}
-
-/**
- * Count how many placed pieces sit against their panel group's minority
- * orientation. Identical parts cut in the same orientation can be gang-cut
- * (one rip, then crosscut), so a layout that keeps a group consistent scores 0.
- * Each off-orientation piece adds 1.
- */
-function orientationInconsistency(solution: Solution): number {
-  // Tally rotated vs. un-rotated per panelId across all sheets.
-  const groups = new Map<string, { rot: number; norm: number }>();
-  for (const sheet of solution.sheets) {
-    for (const p of sheet.placements) {
-      const g = groups.get(p.panelId) ?? { rot: 0, norm: 0 };
-      if (p.rotated) g.rot++;
-      else g.norm++;
-      groups.set(p.panelId, g);
-    }
-  }
-  let penalty = 0;
-  for (const { rot, norm } of groups.values()) {
-    // Minority count = pieces that break the group's dominant orientation.
-    penalty += Math.min(rot, norm);
-  }
-  return penalty;
 }
 
 /** Run all strategies and return solutions sorted by cut-friendliness (best first) */
@@ -266,8 +244,23 @@ export function solveAll(config: {
   stockSheets: StockSheet[];
   panels: Panel[];
   kerf: number;
+  cutPreference?: CutPreference;
 }): Solution[] {
-  const strategies = generateStrategies();
+  const cutPreference = config.cutPreference ?? 'auto';
+  const firstCut = preferredFirstCut(cutPreference);
+  const base = generateStrategies();
+  // With a cut-order preference, also run every strategy in strip mode for the
+  // preferred direction, so layouts that start with that cut are in the pool.
+  const strategies = firstCut
+    ? [
+        ...base,
+        ...base.map((st) => ({
+          ...st,
+          name: `${st.name}/${firstCut === 'horizontal' ? 'rip' : 'crosscut'}-strips`,
+          firstStage: firstCut,
+        })),
+      ]
+    : base;
   const solutions: Solution[] = [];
 
   for (const strategy of strategies) {
@@ -276,7 +269,8 @@ export function solveAll(config: {
         config.stockSheets,
         config.panels,
         config.kerf,
-        strategy
+        strategy,
+        cutPreference
       );
       solutions.push(solution);
     } catch (e) {
@@ -284,42 +278,22 @@ export function solveAll(config: {
     }
   }
 
-  // Sort by cut-friendliness, not just waste. A woodworker prefers a layout
-  // that (1) uses the fewest sheets, then (2) keeps identical parts in the same
-  // orientation so they can be gang-cut (rip once, crosscut into identical
-  // pieces), then (3) wastes little, then (4) needs fewer saw cuts.
+  // Sort by cut-friendliness, not just waste (see compareScores in improve.ts).
+  // A woodworker prefers a layout that (1) places every part, then (2) uses the
+  // fewest sheets, then (3) keeps identical parts in the same orientation so
+  // they can be gang-cut (rip once, crosscut into identical pieces), then (4)
+  // wastes little, then (5) needs fewer saw cuts.
   //
-  // Sheet count is the hard cost — it's what you actually pay for — so it stays
-  // first. But once sheet count is equal, a clean same-orientation plan beats a
+  // Sheet count is the hard cost (it's what you actually pay for), so it stays
+  // ahead of the quality signals. A 'favor-*' cut preference ranks right after
+  // it, so honoring it never costs a sheet; an 'always-*' preference ranks
+  // ahead of it, because the user asked for it even at a material cost.
+  // Once sheet count is equal, a clean same-orientation plan beats a
   // lower-waste one: the extra offcut is scrap you were keeping anyway, whereas
   // an inconsistent orientation forces a separate saw setup and risks grain
   // mismatch on parts that are supposed to be identical.
-  const scored = solutions.map((s) => ({
-    solution: s,
-    unplaced: s.unplacedPanels.reduce((sum, p) => sum + p.quantity, 0),
-    totalCuts: countCuts(s),
-    orientationPenalty: orientationInconsistency(s),
-    // Round waste to whole percent so a 0.3% waste win doesn't reorder plans
-    // that are practically equivalent on material.
-    wasteBucket: Math.round(s.totalWaste),
-  }));
-
-  scored.sort((a, b) => {
-    // A layout that drops panels is never acceptable if a complete one exists —
-    // completeness comes before every quality signal, including sheet count and
-    // orientation. (A no-rotation strategy can leave a part unplaced yet score a
-    // perfect orientation penalty of 0; without this it could outrank a full
-    // layout.)
-    if (a.unplaced !== b.unplaced) return a.unplaced - b.unplaced;
-    if (a.solution.totalSheets !== b.solution.totalSheets)
-      return a.solution.totalSheets - b.solution.totalSheets;
-    if (a.orientationPenalty !== b.orientationPenalty)
-      return a.orientationPenalty - b.orientationPenalty;
-    if (a.wasteBucket !== b.wasteBucket) return a.wasteBucket - b.wasteBucket;
-    if (a.totalCuts !== b.totalCuts) return a.totalCuts - b.totalCuts;
-    // Final tie-break: exact waste.
-    return a.solution.totalWaste - b.solution.totalWaste;
-  });
+  const scored = solutions.map((s) => ({ solution: s, score: scoreSolution(s) }));
+  scored.sort((a, b) => compareScores(a.score, b.score));
 
   solutions.length = 0;
   solutions.push(...scored.map((x) => x.solution));
@@ -351,10 +325,19 @@ export function solveAll(config: {
   // untouched greedy result stays available as an alternative layout.
   if (unique.length > 0) {
     const greedyBest = unique[0];
-    const improved = improveSolution(greedyBest, config.stockSheets, config.panels, config.kerf);
+    const improved = improveSolution(greedyBest, config.stockSheets, config.panels, config.kerf, {
+      cutPreference,
+    });
     if (improved !== greedyBest && compareScores(scoreSolution(improved), scoreSolution(greedyBest)) < 0) {
       unique.unshift(improved);
     }
+  }
+
+  // An 'always-*' preference is a requirement, so when the best layout meets
+  // it, drop the alternatives that don't. When nothing meets it, every layout
+  // is kept and each one reports its mismatched sheets for the UI to flag.
+  if (isHardCutPreference(cutPreference) && unique[0]?.cutOrder?.mismatchedSheets === 0) {
+    return unique.filter((sol) => (sol.cutOrder?.mismatchedSheets ?? 0) === 0);
   }
 
   return unique;

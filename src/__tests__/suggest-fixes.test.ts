@@ -3,9 +3,9 @@ import { suggestFixes } from '@/components/layout-viewer/LayoutViewer';
 import { Panel, StockSheet, Solution } from '@/lib/optimizer/types';
 
 // suggestFixes classifies each unplaced panel as either fixable-by-adding-sheets
-// (a SheetSuggestion) or unfittable. For a rotation-locked panel it must NOT
-// count the rotated orientation as a fit — the optimizer keeps it in its given
-// orientation, so an add-sheets fix would leave it unplaced. (OPUS-405)
+// (a SheetSuggestion) or unfittable. For a panel whose grain fixes its
+// orientation it must NOT count the forbidden orientation as a fit, or an
+// add-sheets fix would leave it unplaced. (OPUS-405)
 
 function panel(p: Partial<Panel> & { length: number; width: number }): Panel {
   return {
@@ -14,7 +14,7 @@ function panel(p: Partial<Panel> & { length: number; width: number }): Panel {
     length: p.length,
     width: p.width,
     quantity: p.quantity ?? 1, // in unplacedPanels this is the unplaced count
-    lockRotation: p.lockRotation ?? false,
+    grain: p.grain ?? 'any',
   };
 }
 
@@ -29,6 +29,7 @@ function stock(s: Partial<StockSheet> & { length: number; width: number }): Stoc
     trimRight: s.trimRight ?? 0,
     trimBottom: s.trimBottom ?? 0,
     trimLeft: s.trimLeft ?? 0,
+    grainDirection: s.grainDirection ?? 'length',
   };
 }
 
@@ -43,29 +44,29 @@ function solutionWithUnplaced(unplaced: Panel[]): Solution {
   };
 }
 
-describe('suggestFixes — rotation lock (OPUS-405)', () => {
+describe('suggestFixes respects panel grain (OPUS-405)', () => {
   // Panel 30(len) x 40(wid). Sheet usable 45 x 35: fits ONLY rotated
   // (40<=45 && 30<=35), never in its given orientation (30<=45 but 40>35).
   const tallSheet = stock({ length: 45, width: 35 });
 
-  it('classifies a rotation-LOCKED panel that only fits rotated as unfittable', () => {
-    const locked = panel({ length: 30, width: 40, lockRotation: true });
+  it('classifies a follow-grain panel that only fits rotated as unfittable', () => {
+    const locked = panel({ length: 30, width: 40, grain: 'follow' });
     const { suggestions, unfittable } = suggestFixes(solutionWithUnplaced([locked]), [tallSheet]);
     expect(suggestions).toHaveLength(0);
     expect(unfittable.map((p) => p.id)).toContain('p1');
   });
 
-  it('still offers an add-sheets fix for an UNLOCKED panel that only fits rotated', () => {
-    const unlocked = panel({ length: 30, width: 40, lockRotation: false });
+  it('still offers an add-sheets fix for an any-orientation panel that only fits rotated', () => {
+    const unlocked = panel({ length: 30, width: 40, grain: 'any' });
     const { suggestions, unfittable } = suggestFixes(solutionWithUnplaced([unlocked]), [tallSheet]);
     expect(unfittable).toHaveLength(0);
     expect(suggestions).toHaveLength(1);
     expect(suggestions[0].sheet.id).toBe('s1');
   });
 
-  it('offers an add-sheets fix for a locked panel that fits in its GIVEN orientation', () => {
-    // Locked 30x40 on a roomy 96x48 sheet fits unrotated — a legitimate fix.
-    const locked = panel({ length: 30, width: 40, lockRotation: true });
+  it('offers an add-sheets fix for a follow-grain panel that fits in its given orientation', () => {
+    // Follow-grain 30x40 on a roomy 96x48 sheet fits unrotated: a legitimate fix.
+    const locked = panel({ length: 30, width: 40, grain: 'follow' });
     const roomy = stock({ length: 96, width: 48 });
     const { suggestions, unfittable } = suggestFixes(solutionWithUnplaced([locked]), [roomy]);
     expect(unfittable).toHaveLength(0);

@@ -4,6 +4,7 @@ import {
   SplitRule,
   SelectionRule,
 } from './types';
+import type { Orientations } from '../grain';
 
 /**
  * Tolerance for fit comparisons (inches). Absorbs floating-point drift from
@@ -111,9 +112,13 @@ function chooseSplit(
  * on a side is ≤ kerf there is no room for a neighbouring piece there, so no kerf
  * is consumed and the region collapses to zero.
  *
- * @param pieceW - raw width of the piece (without kerf)
- * @param pieceH - raw height of the piece (without kerf)
- * @param kerf   - saw blade width, reserved only between adjacent pieces
+ * @param pieceW       - raw width of the piece (without kerf), unrotated
+ * @param pieceH       - raw height of the piece (without kerf), unrotated
+ * @param kerf         - saw blade width, reserved only between adjacent pieces
+ * @param orientations - which of the unrotated / rotated placements are allowed
+ * @param firstStage   - when set, a free region spanning the full sheet in the
+ *                       cross direction is always split this way, so the sheet
+ *                       breaks down into first-stage strips
  */
 export function placeInTree(
   tree: GuillotineNode,
@@ -122,8 +127,9 @@ export function placeInTree(
   kerf: number,
   selectionRule: SelectionRule,
   splitRule: SplitRule,
-  allowRotation: boolean,
-  placementInfo: { panelId: string; label: string; color: string }
+  orientations: Orientations,
+  placementInfo: { panelId: string; label: string; color: string },
+  firstStage?: 'horizontal' | 'vertical'
 ): Placement | null {
   const freeRects = collectFreeRects(tree);
 
@@ -133,9 +139,17 @@ export function placeInTree(
   let bestPW = pieceW;
   let bestPH = pieceH;
 
+  // A square piece has the same footprint either way, so when both
+  // orientations are allowed the rotated attempt is redundant. When grain
+  // allows only the rotated one, it still has to be recorded as rotated.
+  const isSquare = Math.abs(pieceW - pieceH) <= FIT_EPS;
+  const tryRotated = orientations.rotated && !(orientations.normal && isSquare);
+
   for (const rect of freeRects) {
     // Try normal orientation
-    const score = scoreFit(rect.width, rect.height, pieceW, pieceH, selectionRule);
+    const score = orientations.normal
+      ? scoreFit(rect.width, rect.height, pieceW, pieceH, selectionRule)
+      : -1;
     if (score !== -1 && score < bestScore) {
       bestScore = score;
       bestNode = rect.node;
@@ -145,7 +159,7 @@ export function placeInTree(
     }
 
     // Try rotated
-    if (allowRotation && Math.abs(pieceW - pieceH) > FIT_EPS) {
+    if (tryRotated) {
       const scoreR = scoreFit(rect.width, rect.height, pieceH, pieceW, selectionRule);
       if (scoreR !== -1 && scoreR < bestScore) {
         bestScore = scoreR;
@@ -159,13 +173,19 @@ export function placeInTree(
 
   if (!bestNode) return null;
 
-  const splitDir = chooseSplit(
-    bestNode.width,
-    bestNode.height,
-    bestPW,
-    bestPH,
-    splitRule
-  );
+  // A region still spanning the whole usable sheet across the strip direction
+  // is a first-stage region: splitting it the first-stage way yields a
+  // full-span cut, so the sheet breaks down into strips.
+  const spansFullWidth =
+    Math.abs(bestNode.x - tree.x) <= FIT_EPS && Math.abs(bestNode.width - tree.width) <= FIT_EPS;
+  const spansFullHeight =
+    Math.abs(bestNode.y - tree.y) <= FIT_EPS && Math.abs(bestNode.height - tree.height) <= FIT_EPS;
+  const splitDir =
+    firstStage === 'horizontal' && spansFullWidth
+      ? 'horizontal'
+      : firstStage === 'vertical' && spansFullHeight
+        ? 'vertical'
+        : chooseSplit(bestNode.width, bestNode.height, bestPW, bestPH, splitRule);
 
   const placement: Placement = {
     panelId: placementInfo.panelId,

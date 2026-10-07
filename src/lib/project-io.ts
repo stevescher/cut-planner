@@ -1,11 +1,27 @@
-import { ProjectData } from './optimizer/types';
+import { CutPreference, PanelGrain, ProjectData, SheetGrain } from './optimizer/types';
 import { safeFilename } from './safe-export';
 
 const STORAGE_KEY = 'cut-planner-project';
 
 /** Current on-disk schema version. Bump when the shape changes and add a
- *  migration step in migrateProjectData below. */
-const CURRENT_VERSION = 1 as const;
+ *  migration step in migrateProjectData below.
+ *  v2: three-state sheet grain ('none' added), per-panel `grain` replacing
+ *  `lockRotation`, and a project-level `cutPreference`. */
+const CURRENT_VERSION = 2 as const;
+
+const SHEET_GRAINS: readonly SheetGrain[] = ['length', 'width', 'none'];
+const PANEL_GRAINS: readonly PanelGrain[] = ['follow', 'across', 'any'];
+const CUT_PREFERENCES: readonly CutPreference[] = [
+  'auto', 'favor-rip', 'always-rip', 'favor-crosscut', 'always-crosscut',
+];
+
+/** Shape accepted from disk: any supported version, before migration. */
+type StoredProject = Omit<ProjectData, 'version' | 'cutPreference' | 'stockSheets' | 'panels'> & {
+  version: number;
+  cutPreference?: CutPreference;
+  stockSheets: Array<Omit<ProjectData['stockSheets'][number], 'grainDirection'> & { grainDirection?: SheetGrain }>;
+  panels: Array<Omit<ProjectData['panels'][number], 'grain'> & { grain?: PanelGrain; lockRotation?: boolean }>;
+};
 
 const MAX_DIMENSION = 10_000; // inches — no realistic sheet exceeds this
 
@@ -17,7 +33,7 @@ function isFiniteNonNegative(v: unknown): v is number {
   return typeof v === 'number' && isFinite(v) && v >= 0;
 }
 
-function validateProjectData(data: unknown): data is ProjectData {
+function validateProjectData(data: unknown): data is StoredProject {
   if (!data || typeof data !== 'object') return false;
   const d = data as Record<string, unknown>;
 
@@ -43,9 +59,11 @@ function validateProjectData(data: unknown): data is ProjectData {
     // pricePerSheet is optional; reject only a wrong type or an out-of-range value.
     if (sheet.pricePerSheet !== undefined &&
         (!isFiniteNonNegative(sheet.pricePerSheet) || (sheet.pricePerSheet as number) > 1_000_000)) return false;
-    // grainDirection is optional; accept only the two known values.
+    // grainDirection is optional on v1 saves (backfilled on load); accept only
+    // known values. 'none' arrived in v2.
     if (sheet.grainDirection !== undefined &&
-        sheet.grainDirection !== 'length' && sheet.grainDirection !== 'width') return false;
+        !SHEET_GRAINS.includes(sheet.grainDirection as SheetGrain)) return false;
+    if (d.version < 2 && sheet.grainDirection === 'none') return false;
   }
 
   // Accept missing units for backwards compatibility with pre-units saves; default to 'imperial'
@@ -60,8 +78,13 @@ function validateProjectData(data: unknown): data is ProjectData {
     if (!isFinitePositive(panel.length) || (panel.length as number) > MAX_DIMENSION) return false;
     if (!isFinitePositive(panel.width) || (panel.width as number) > MAX_DIMENSION) return false;
     if (!Number.isInteger(panel.quantity) || (panel.quantity as number) < 1 || (panel.quantity as number) > 100) return false;
-    // lockRotation is optional (backfilled on load); reject only a wrong type.
+    // lockRotation (v1) is optional (migrated on load); reject only a wrong type.
     if (panel.lockRotation !== undefined && typeof panel.lockRotation !== 'boolean') return false;
+    if (panel.grain !== undefined && !PANEL_GRAINS.includes(panel.grain as PanelGrain)) return false;
+  }
+
+  if (d.cutPreference !== undefined && !CUT_PREFERENCES.includes(d.cutPreference as CutPreference)) {
+    return false;
   }
 
   return true;
@@ -86,12 +109,26 @@ export function saveToLocalStorage(data: ProjectData): boolean {
  * Bring a validated (current-or-older) project up to the current schema:
  * backfill fields that newer versions added, then stamp the current version.
  */
-function migrateProjectData(data: ProjectData): ProjectData {
+function migrateProjectData(data: StoredProject): ProjectData {
+  const v1 = data.version < 2;
   return {
     ...data,
     version: CURRENT_VERSION,
     units: data.units ?? 'imperial',
-    panels: data.panels.map((p) => ({ ...p, lockRotation: p.lockRotation ?? false })),
+    cutPreference: data.cutPreference ?? 'auto',
+    // v1 had no "none" state: an unset grain meant grain along the length, and
+    // the overlay treated it that way. Keep that for old saves so their layouts
+    // don't change; new sheets default to 'none' in the store.
+    stockSheets: data.stockSheets.map((s) => ({
+      ...s,
+      grainDirection: s.grainDirection ?? (v1 ? 'length' : 'none'),
+    })),
+    // v1 lockRotation=true kept a panel's length along the sheet length, which
+    // is 'follow' on a length-grain sheet; an unlocked panel rotated freely.
+    panels: data.panels.map(({ lockRotation, ...p }) => ({
+      ...p,
+      grain: p.grain ?? (lockRotation ? 'follow' : v1 ? 'any' : 'follow'),
+    })),
   };
 }
 

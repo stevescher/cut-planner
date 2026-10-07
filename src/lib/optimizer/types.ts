@@ -1,3 +1,31 @@
+/**
+ * Direction the face grain runs on a stock sheet. 'length' = along the sheet's
+ * length (the X axis on the canvas), 'width' = along its width, 'none' = a
+ * grainless material (raw MDF, particleboard, solid-color melamine, hardboard).
+ */
+export type SheetGrain = 'length' | 'width' | 'none';
+
+/**
+ * How a panel's grain must sit on a grained sheet. A panel's grain runs along
+ * its `length` ('follow') or across it, along its `width` ('across'). 'any'
+ * means grain doesn't matter for this part (hidden parts, painted work), so it
+ * may rotate freely. On a grainless sheet every panel may rotate.
+ */
+export type PanelGrain = 'follow' | 'across' | 'any';
+
+/**
+ * Which direction the first full-span cut on each sheet should run. A rip runs
+ * along the sheet's length (horizontal on the canvas), a crosscut across it.
+ * 'favor-*' ranks matching layouts first but never spends an extra sheet on it;
+ * 'always-*' requires it, even at a material cost.
+ */
+export type CutPreference =
+  | 'auto'
+  | 'favor-rip'
+  | 'always-rip'
+  | 'favor-crosscut'
+  | 'always-crosscut';
+
 /** A stock sheet definition from user input */
 export interface StockSheet {
   id: string;
@@ -11,12 +39,8 @@ export interface StockSheet {
   trimLeft: number;
   /** Optional material cost per sheet (display-only, plain number). Undefined = unpriced. */
   pricePerSheet?: number;
-  /**
-   * Direction the wood grain runs on this stock sheet.
-   * 'length' (default) = along the sheet's length axis; 'width' = along width.
-   * Used only for the grain-direction overlay; the optimizer is unaffected.
-   */
-  grainDirection?: 'length' | 'width';
+  /** Direction the face grain runs on this sheet. See SheetGrain. */
+  grainDirection: SheetGrain;
 }
 
 /** A required panel/part from user input */
@@ -26,8 +50,8 @@ export interface Panel {
   length: number; // inches
   width: number; // inches
   quantity: number;
-  /** When true, the optimizer will not rotate this panel — grain/face direction is preserved */
-  lockRotation: boolean;
+  /** How this panel's grain must sit on a grained sheet. See PanelGrain. */
+  grain: PanelGrain;
 }
 
 /** A panel placed on a specific sheet */
@@ -101,6 +125,12 @@ export interface Solution {
   totalWaste: number;
   totalSheets: number;
   unplacedPanels: Panel[];
+  /**
+   * Cut-order conformance, present when a non-auto CutPreference was in effect.
+   * `mismatchedSheets` counts sheets whose layout cannot start with a full-span
+   * cut in the preferred direction.
+   */
+  cutOrder?: { preference: CutPreference; mismatchedSheets: number };
 }
 
 /** Guillotine tree node — represents recursive splits */
@@ -139,6 +169,12 @@ export interface PackingStrategy {
   splitRule: SplitRule;
   selectionRule: SelectionRule;
   allowRotation: boolean;
+  /**
+   * When set, every free region spanning the full usable sheet in the cross
+   * direction is split this way, so the sheet breaks down into first-stage
+   * strips (horizontal = rip strips, vertical = crosscut strips).
+   */
+  firstStage?: 'horizontal' | 'vertical';
 }
 
 /** Configuration passed to optimizer */
@@ -179,11 +215,12 @@ export const STOCK_PRESETS = STOCK_PRESETS_IMPERIAL;
 
 /** Serializable project data for save/load */
 export interface ProjectData {
-  version: 1;
+  version: 2;
   name: string;
   stockSheets: StockSheet[];
   panels: Panel[];
   kerf: number;
+  cutPreference: CutPreference;
   units: 'imperial' | 'metric';
   savedAt: string;
 }
