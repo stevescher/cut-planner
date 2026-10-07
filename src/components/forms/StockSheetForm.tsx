@@ -6,7 +6,7 @@ import { StockPresetSelect } from './StockPresetSelect';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Plus, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { parsePrice } from '@/lib/cost';
 import { MATERIAL_PRESETS, dimensionUpdates, materialUpdates, needsGrainChoice } from '@/lib/materials';
 
@@ -86,6 +86,9 @@ export function StockSheetForm() {
   const { stockSheets, addStockSheet, updateStockSheet, removeStockSheet, units } =
     useProjectStore();
   const [expandedTrim, setExpandedTrim] = useState<string | null>(null);
+  // Stable across server and client render (sheet ids are random per load,
+  // which made the label/control ids mismatch on hydration).
+  const fieldId = useId();
 
   return (
     <div className="space-y-2.5">
@@ -155,9 +158,9 @@ export function StockSheetForm() {
 
           {/* Material preset: pre-fills grain (and the label if empty) */}
           <div>
-            <label className="field-label" htmlFor={`material-${sheet.id}`}>Material</label>
+            <label className="field-label" htmlFor={`${fieldId}-material-${idx}`}>Material</label>
             <select
-              id={`material-${sheet.id}`}
+              id={`${fieldId}-material-${idx}`}
               value={sheet.material ?? ''}
               onChange={(e) => updateStockSheet(sheet.id, materialUpdates(sheet, e.target.value || undefined))}
               className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm text-foreground

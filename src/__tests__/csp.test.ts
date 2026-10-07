@@ -55,6 +55,11 @@ describe('next.config.ts — Content-Security-Policy', () => {
     expect(csp).toMatch(/worker-src[^;]*\bblob:/);
   });
 
+  it('script-src and connect-src allow PostHog (remote config, surveys, events)', () => {
+    expect(csp).toMatch(/script-src[^;]*https:\/\/\*\.posthog\.com/);
+    expect(csp).toMatch(/connect-src[^;]*https:\/\/\*\.posthog\.com/);
+  });
+
   it('img-src includes data: (required for html-to-image PNG export)', () => {
     expect(csp).toMatch(/img-src[^;]*\bdata:/);
   });

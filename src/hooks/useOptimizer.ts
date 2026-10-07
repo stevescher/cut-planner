@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect } from 'react';
 import { wrap, Remote } from 'comlink';
 import { useProjectStore } from '@/store/useProjectStore';
 import { useLayoutStore } from '@/store/useLayoutStore';
@@ -19,40 +19,47 @@ import {
 type WorkerApi = { solveAll: typeof solveAll };
 type SolveConfig = Parameters<typeof solveAll>[0];
 
-export function useOptimizer() {
-  const remoteRef = useRef<Remote<WorkerApi> | null>(null);
-  const workerRef = useRef<Worker | null>(null);
-  // Incremented per plan, so a slow comparison solve from an earlier plan never
-  // writes its costs over a newer plan.
-  const runRef = useRef(0);
+// One optimizer worker shared by every component that uses this hook (the
+// sidebar's Plan Cuts and the viewer's add-sheets re-plan), reference-counted
+// so it starts with the first user and stops with the last.
+let shared: { worker: Worker; remote: Remote<WorkerApi> } | null = null;
+let users = 0;
+// Incremented per plan across all users, so a slow comparison solve from an
+// earlier plan never writes its costs over a newer one.
+let latestRun = 0;
 
-  useEffect(() => {
-    let worker: Worker;
-    try {
-      worker = new Worker(
-        new URL('../lib/optimizer/optimizer.worker.ts', import.meta.url)
-      );
-      worker.onerror = () => {
-        // Worker failed to load (e.g. bundler doesn't support this pattern in dev).
-        // The optimize() fallback path will use the main-thread solver instead.
-        remoteRef.current = null;
-        workerRef.current = null;
-      };
-      workerRef.current = worker;
-      remoteRef.current = wrap<WorkerApi>(worker);
-    } catch {
-      // Worker construction not supported in this environment — fallback is used.
-    }
-
-    return () => {
-      worker?.terminate();
-      workerRef.current = null;
-      remoteRef.current = null;
+function acquireWorker(): void {
+  users++;
+  if (shared) return;
+  try {
+    const worker = new Worker(new URL('../lib/optimizer/optimizer.worker.ts', import.meta.url));
+    worker.onerror = () => {
+      // Worker failed to load (e.g. blocked or unsupported). optimize() falls
+      // back to the main-thread solver.
+      if (shared?.worker === worker) shared = null;
     };
+    shared = { worker, remote: wrap<WorkerApi>(worker) };
+  } catch {
+    // Worker construction not supported in this environment; fallback is used.
+  }
+}
+
+function releaseWorker(): void {
+  users = Math.max(0, users - 1);
+  if (users === 0 && shared) {
+    shared.worker.terminate();
+    shared = null;
+  }
+}
+
+export function useOptimizer() {
+  useEffect(() => {
+    acquireWorker();
+    return releaseWorker;
   }, []);
 
   const solve = useCallback(async (config: SolveConfig) => {
-    if (remoteRef.current) return remoteRef.current.solveAll(config);
+    if (shared) return shared.remote.solveAll(config);
     // Worker not yet initialized: fall back to a main-thread synchronous call
     return solveAll(config);
   }, []);
@@ -63,7 +70,7 @@ export function useOptimizer() {
     // a square grained sheet needs a grain direction before it can be planned.
     if (stockSheets.some(needsGrainChoice)) return;
     const { setOptimizing, setSolutions, setConstraintCosts } = useLayoutStore.getState();
-    const run = ++runRef.current;
+    const run = ++latestRun;
 
     // A fresh plan produces brand-new placement arrays, so any pins (which are
     // keyed by placement index) from a previous plan are meaningless and could
@@ -110,7 +117,7 @@ export function useOptimizer() {
       // Skip if a newer plan started, or an anchored re-plan replaced the
       // layout this comparison was measured against.
       const current = useLayoutStore.getState().solutions[0];
-      if (run === runRef.current && current?.id === best.id) setConstraintCosts(costs);
+      if (run === latestRun && current?.id === best.id) setConstraintCosts(costs);
     } catch (e) {
       console.error('Constraint cost comparison failed:', e);
     }
