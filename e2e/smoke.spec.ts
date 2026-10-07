@@ -15,7 +15,11 @@ test('page loads without uncaught errors', async ({ page }) => {
   page.on('pageerror', (err) => pageErrors.push(err.message));
 
   await page.goto('/');
-  await page.waitForLoadState('networkidle');
+  // Not 'networkidle': Playwright never marks a Web Worker's script request as
+  // finished, so once the optimizer worker loads (OPUS-472) the page never
+  // reaches network idle. Wait for load plus a hydrated, enabled control.
+  await page.waitForLoadState('load');
+  await expect(page.getByRole('button', { name: 'Add Panel' })).toBeEnabled();
 
   expect(pageErrors, 'Uncaught page errors found').toHaveLength(0);
 });

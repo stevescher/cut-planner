@@ -22,7 +22,10 @@ const securityHeaders = [
     key: "Content-Security-Policy",
     // unsafe-inline: required by Next.js hydration inline scripts and Tailwind CSS
     // unsafe-eval: required by jsPDF (uses Function() internally)
-    // blob:: required for object URLs (JSON export) and Web Worker (comlink)
+    // blob:: required for object URLs (JSON export)
+    // worker-src 'self': the optimizer Web Worker (comlink) loads as a same-origin
+    //   script chunk (/_next/static/chunks/...) in both dev and production builds;
+    //   without it the worker is blocked and the solver falls back to the main thread
     // data:: required for html-to-image PNG export (data URL canvas output)
     // ws: wss:: required for Turbopack HMR WebSocket connections in development
     value: [
@@ -31,7 +34,7 @@ const securityHeaders = [
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob:",
       "font-src 'self'",
-      "worker-src blob:",
+      "worker-src 'self' blob:",
       "connect-src 'self' ws: wss: https://us.i.posthog.com https://us-assets.i.posthog.com https://*.ingest.us.sentry.io",
       "object-src 'none'",
       "base-uri 'self'",

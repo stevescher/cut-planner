@@ -47,7 +47,11 @@ describe('next.config.ts — Content-Security-Policy', () => {
     expect(csp).toMatch(/connect-src[^;]*\bwss:/);
   });
 
-  it('worker-src includes blob: (required for Comlink web worker)', () => {
+  it("worker-src includes 'self' (the optimizer worker is a same-origin script chunk, OPUS-472)", () => {
+    expect(csp).toMatch(/worker-src[^;]*'self'/);
+  });
+
+  it('worker-src includes blob:', () => {
     expect(csp).toMatch(/worker-src[^;]*\bblob:/);
   });
 
