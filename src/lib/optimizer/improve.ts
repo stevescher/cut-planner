@@ -233,6 +233,9 @@ export function improveSolution(
     let eliminated = false;
     for (const { i: targetIdx } of order) {
       const target = sheets[targetIdx];
+      // Moving parts one by one would split a grain-matched group, so a sheet
+      // holding one is never emptied here.
+      if (target.placements.some((p) => p.group)) continue;
       if (target.placements.length === 0) {
         // An already-empty sheet: just drop it.
         sheets = sheets.filter((_, idx) => idx !== targetIdx);

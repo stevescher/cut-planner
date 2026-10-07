@@ -3,6 +3,10 @@ import { Solution, SheetLayout, StockSheet, Placement, CutStep, Panel, CutPrefer
 import { FIT_EPS } from './guillotine';
 import { allowedOrientations } from '../grain';
 import { CutAxis, evaluateCutOrder, preferredFirstCut } from './cut-order';
+import { GROUP_PANEL_PREFIX, boundsOf } from './grain-groups';
+
+/** A re-plan unit: one piece, or a grain-matched group moved as a rigid block. */
+type Unit = Placement & { members?: Placement[] };
 import {
   FreeRect,
   pruneContained,
@@ -488,12 +492,19 @@ export function reOptimizeAroundPinned(
   // In this pass "bestRotated" means turned 90 degrees from the piece's current
   // footprint, so map the grain rule (stated in absolute orientation) onto
   // keeping or turning the current footprint.
-  function footprintOptions(piece: Placement, stock: StockSheet): { keep: boolean; turn: boolean } {
-    const allowed = allowedOrientations(grainById.get(piece.panelId) ?? 'any', stock);
+  function footprintOptions(piece: Unit, stock: StockSheet): { keep: boolean; turn: boolean } {
+    // A group block is judged by its parts' shared grain (the first member
+    // speaks for all); turning it transposes the whole block, keeping order.
+    const grainKey = piece.members ? piece.members[0].panelId : piece.panelId;
+    const allowed = allowedOrientations(grainById.get(grainKey) ?? 'any', stock);
     const keep = piece.rotated ? allowed.rotated : allowed.normal;
     const turn = piece.rotated ? allowed.normal : allowed.rotated;
     return { keep, turn };
   }
+
+  // Pieces the re-pack couldn't fit back on their sheet, by panel id. They are
+  // reported as unplaced rather than silently dropped.
+  const dropped = new Map<string, { count: number; sample: Placement }>();
 
   const newSheets: SheetLayout[] = solution.sheets.map((sheet) => {
     const stockSheet = stockSheets.find((s) => s.id === sheet.stockSheetId);
@@ -501,18 +512,47 @@ export function reOptimizeAroundPinned(
 
     const sheetKey = `${sheet.stockSheetId}-${sheet.sheetIndex}`;
 
-    // Separate pinned (soft-anchor) from free-floating
-    type AnchoredPanel = Placement & { prefCX: number; prefCY: number };
-    const anchored: AnchoredPanel[] = [];
-    const floating: Placement[] = [];
-
+    // Collapse each grain-matched group on this sheet into one rigid unit so
+    // re-packing can't split it; it counts as anchored if any part is pinned.
+    const units: Array<{ unit: Unit; pinned: boolean }> = [];
+    const groupUnits = new Map<string, { members: Placement[]; pinned: boolean }>();
     sheet.placements.forEach((p, pi) => {
-      if (pinnedPieces.has(`${sheetKey}:${pi}`)) {
+      const pinned = pinnedPieces.has(`${sheetKey}:${pi}`);
+      if (!p.group) {
+        units.push({ unit: p, pinned });
+        return;
+      }
+      const g = groupUnits.get(p.group.id) ?? { members: [], pinned: false };
+      g.members.push(p);
+      g.pinned = g.pinned || pinned;
+      groupUnits.set(p.group.id, g);
+    });
+    for (const [id, g] of groupUnits) {
+      const b = boundsOf(g.members);
+      units.push({
+        unit: {
+          ...g.members[0],
+          panelId: `${GROUP_PANEL_PREFIX}${id}`,
+          x: b.x, y: b.y, width: b.width, height: b.height,
+          group: undefined,
+          members: g.members,
+        },
+        pinned: g.pinned,
+      });
+    }
+
+    // Separate pinned (soft-anchor) from free-floating
+    type AnchoredPanel = Unit & { prefCX: number; prefCY: number };
+    const anchored: AnchoredPanel[] = [];
+    const floating: Unit[] = [];
+
+    for (const { unit: p, pinned } of units) {
+      if (pinned) {
         anchored.push({ ...p, prefCX: p.x + p.width / 2, prefCY: p.y + p.height / 2 });
       } else {
         floating.push(p);
       }
-    });
+    }
 
     // Full usable free area
     const usableX = stockSheet.trimLeft;
@@ -521,8 +561,8 @@ export function reOptimizeAroundPinned(
     const usableH = stockSheet.width - stockSheet.trimTop - stockSheet.trimBottom;
     let freeRects: FreeRect[] = [{ x: usableX, y: usableY, w: usableW, h: usableH }];
 
-    const newPlacements: Placement[] = [];
-    const unplacedFloating: Placement[] = [];
+    const newPlacements: Unit[] = [];
+    const unplacedFloating: Unit[] = [];
 
     // ── Pass 1: soft-anchored pieces → closest free rect to preference ──────
     // Sort by area desc so large anchored pieces claim their space first
@@ -631,9 +671,38 @@ export function reOptimizeAroundPinned(
       freeRects = pruneContained(freeRects);
     }
 
+    for (const u of unplacedFloating) {
+      for (const piece of u.members ?? [u]) {
+        const d = dropped.get(piece.panelId) ?? { count: 0, sample: piece };
+        d.count++;
+        dropped.set(piece.panelId, d);
+      }
+    }
+
+    // ── Expand group units back into their parts, shifted with the block ─────
+    const expanded: Placement[] = newPlacements.flatMap((u) => {
+      if (!u.members) return [u];
+      const origin = boundsOf(u.members);
+      const dx = u.x - origin.x;
+      const dy = u.y - origin.y;
+      // Turned 90 degrees in the re-pack: transpose every part about the
+      // block's corner, so the strip runs the other way in the same order.
+      if (u.rotated !== u.members[0].rotated) {
+        return u.members.map((m) => ({
+          ...m,
+          x: u.x + (m.y - origin.y),
+          y: u.y + (m.x - origin.x),
+          width: m.height,
+          height: m.width,
+          rotated: !m.rotated,
+        }));
+      }
+      return u.members.map((m) => ({ ...m, x: m.x + dx, y: m.y + dy }));
+    });
+
     // ── Derive fresh cut sequence from new placements ────────────────────────
     const { steps: cutSequence, isApproximate: cutSequenceApproximate } =
-      deriveCutSequenceFromPlacements(newPlacements, stockSheet.length, stockSheet.width, {
+      deriveCutSequenceFromPlacements(expanded, stockSheet.length, stockSheet.width, {
         left: stockSheet.trimLeft,
         top: stockSheet.trimTop,
         right: stockSheet.trimRight,
@@ -642,11 +711,11 @@ export function reOptimizeAroundPinned(
 
     // Recalculate waste against usable area (excluding trim); reuse usableW/usableH from above
     const totalArea = usableW * usableH;
-    const usedArea = newPlacements.reduce((s, p) => s + p.width * p.height, 0);
+    const usedArea = expanded.reduce((s, p) => s + p.width * p.height, 0);
 
     return {
       ...sheet,
-      placements: newPlacements,
+      placements: expanded,
       cutSequence,
       cutSequenceApproximate,
       wastePercent: ((totalArea - usedArea) / totalArea) * 100,
@@ -670,7 +739,42 @@ export function reOptimizeAroundPinned(
     sheets: newSheets,
     totalWaste: totalArea > 0 ? ((totalArea - totalUsed) / totalArea) * 100 : 0,
     totalSheets: newSheets.length,
-    unplacedPanels: solution.unplacedPanels,
+    unplacedPanels: mergeUnplaced(solution.unplacedPanels, dropped, panels),
     cutOrder: evaluateCutOrder(newSheets, stockSheets, cutPreference),
   };
+}
+
+/**
+ * Add pieces a re-plan dropped to the solution's unplaced list, adding to the
+ * quantity of a panel that was already unplaced. A piece whose panel is no
+ * longer in the project is described from its placement.
+ */
+function mergeUnplaced(
+  existing: Panel[],
+  dropped: Map<string, { count: number; sample: Placement }>,
+  panels: Panel[],
+): Panel[] {
+  if (dropped.size === 0) return existing;
+  const merged = existing.map((p) => ({ ...p }));
+  for (const [panelId, { count, sample }] of dropped) {
+    const already = merged.find((p) => p.id === panelId);
+    if (already) {
+      already.quantity += count;
+      continue;
+    }
+    const source = panels.find((p) => p.id === panelId);
+    merged.push(
+      source
+        ? { ...source, quantity: count }
+        : {
+            id: panelId,
+            label: sample.label,
+            length: sample.rotated ? sample.height : sample.width,
+            width: sample.rotated ? sample.width : sample.height,
+            quantity: count,
+            grain: 'any',
+          },
+    );
+  }
+  return merged;
 }

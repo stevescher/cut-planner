@@ -12,6 +12,7 @@ import { sheetGrainAxis, isGrainViolation, canRotatePlacement } from '@/lib/grai
 import { useProjectStore } from '@/store/useProjectStore';
 import { deriveCutSequenceFromPlacements } from '@/lib/optimizer/reoptimize';
 import { evaluateCutOrder, preferredFirstCut } from '@/lib/optimizer/cut-order';
+import { boundsOf } from '@/lib/optimizer/grain-groups';
 import { Maximize2 } from 'lucide-react';
 
 interface SheetCanvasProps {
@@ -41,7 +42,7 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
   // React's useId output contains them and they're unsafe in url(#id) refs.
   const uid = useId().replace(/:/g, '');
   const { showLabels, viewMode, showCutSequence, showEdgeDims, showGrain, zoom } = useViewStore();
-  const { units, panels } = useProjectStore();
+  const { units, panels, grainGroups } = useProjectStore();
   const grainOf = (panelId: string) => panels.find((pl) => pl.id === panelId)?.grain ?? 'any';
   // The sheet's real grain axis; every part cut from it carries this grain.
   const sheetAxis = sheetGrainAxis(stockSheet);
@@ -82,11 +83,37 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
     [scale]
   );
 
+  /**
+   * Indices of the placements that move together with `placementIndex`: the
+   * whole grain-matched group it belongs to on this sheet, or just itself.
+   */
+  const unitOf = useCallback(
+    (placementIndex: number): number[] => {
+      const groupId = sheetLayout.placements[placementIndex]?.group?.id;
+      if (!groupId) return [placementIndex];
+      return sheetLayout.placements.flatMap((q, qi) => (q.group?.id === groupId ? [qi] : []));
+    },
+    [sheetLayout.placements]
+  );
+
+  /**
+   * Snap and clamp a dragged piece. (rawX, rawY) is the piece's own position;
+   * a grouped piece snaps and clamps as its whole group's bounding box, so the
+   * group moves as one rigid block.
+   */
   const snapToEdges = useCallback(
     (rawX: number, rawY: number, placementIndex: number) => {
-      const p = sheetLayout.placements[placementIndex];
+      const piece = sheetLayout.placements[placementIndex];
+      const unit = unitOf(placementIndex);
+      const members = unit.map((i) => sheetLayout.placements[i]);
+      const p = members.length > 1 ? boundsOf(members) : piece;
+      // Offset of the dragged piece inside its unit's bounding box.
+      const offX = piece.x - p.x;
+      const offY = piece.y - p.y;
+      rawX -= offX;
+      rawY -= offY;
       const threshold = 8 / scale;
-      const others = sheetLayout.placements.filter((_, pi) => pi !== placementIndex);
+      const others = sheetLayout.placements.filter((_, pi) => !unit.includes(pi));
 
       const xCandidates = [
         stockSheet.trimLeft,
@@ -108,12 +135,13 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
         if (Math.abs(rawY - cy) <= threshold) { y = cy; break; }
       }
       return {
-        x: Math.max(stockSheet.trimLeft, Math.min(x, sheetW - stockSheet.trimRight - p.width)),
-        y: Math.max(stockSheet.trimTop, Math.min(y, sheetH - stockSheet.trimBottom - p.height)),
+        x: Math.max(stockSheet.trimLeft, Math.min(x, sheetW - stockSheet.trimRight - p.width)) + offX,
+        y: Math.max(stockSheet.trimTop, Math.min(y, sheetH - stockSheet.trimBottom - p.height)) + offY,
       };
     },
     [
       sheetLayout.placements,
+      unitOf,
       sheetW,
       sheetH,
       scale,
@@ -177,6 +205,12 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
    *  keyboard arrow-key nudge path so both interaction methods stay in sync. */
   const commitMove = useCallback(
     (placementIndex: number, x: number, y: number) => {
+      // Move the piece's whole unit (its grain-matched group, if any) by the
+      // same offset so the group stays intact.
+      const moved = sheetLayout.placements[placementIndex];
+      const dx = x - moved.x;
+      const dy = y - moved.y;
+      const unit = unitOf(placementIndex);
       const layoutStore = useLayoutStore.getState();
       useHistoryStore.getState().pushState({
         solutions: layoutStore.solutions,
@@ -191,8 +225,8 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
             if (sheet.stockSheetId !== stockSheet.id || sheet.sheetIndex !== sheetLayout.sheetIndex)
               return sheet;
             const newPlacements = sheet.placements.map((pl, pi) => {
-              if (pi !== placementIndex) return pl;
-              return { ...pl, x, y };
+              if (!unit.includes(pi)) return pl;
+              return { ...pl, x: pl.x + dx, y: pl.y + dy };
             });
             const { steps: cutSequence, isApproximate: cutSequenceApproximate } =
               deriveCutSequenceFromPlacements(newPlacements, sheetW, sheetH, {
@@ -212,11 +246,11 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
       });
       layoutStore.updateSolutions(withCutOrder(updatedSolutions, layoutStore.activeSolutionIndex));
 
-      if (!isPinned(sheetKey, placementIndex)) {
-        togglePin(sheetKey, placementIndex);
+      for (const i of unit) {
+        if (!isPinned(sheetKey, i)) togglePin(sheetKey, i);
       }
     },
-    [sheetLayout, stockSheet, sheetKey, sheetW, sheetH, isPinned, togglePin]
+    [sheetLayout, stockSheet, sheetKey, sheetW, sheetH, isPinned, togglePin, unitOf]
   );
 
   const handlePointerUp = useCallback(() => {
@@ -346,7 +380,7 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
       const p = sheetLayout.placements[placementIndex];
       const label = p.label || `Panel ${placementIndex + 1}`;
       const grain = panels.find((pl) => pl.id === p.panelId)?.grain ?? 'any';
-      const rotationLocked = !canRotatePlacement(p, grain, stockSheet);
+      const rotationLocked = !!p.group || !canRotatePlacement(p, grain, stockSheet);
 
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
@@ -355,7 +389,11 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
         // but stopping propagation keeps this control self-contained.
         e.stopPropagation();
         if (rotationLocked) {
-          setAnnouncement(`${label} can't rotate: its grain setting fixes its orientation on this sheet`);
+          setAnnouncement(
+            p.group
+              ? `${label} can't rotate: it is part of a grain-matched group`
+              : `${label} can't rotate: its grain setting fixes its orientation on this sheet`
+          );
         } else {
           handleRotate(e, placementIndex);
           setAnnouncement(`${label} rotated`);
@@ -402,6 +440,25 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
   );
 
   // ── Rendering ──────────────────────────────────────────────────────────────
+
+  // While dragging, every piece in the dragged unit (a whole grain-matched
+  // group, or the single piece) is drawn shifted by the same offset.
+  const dragUnit = dragState ? unitOf(dragState.placementIndex) : [];
+  const dragDX = dragState ? dragState.currentX - sheetLayout.placements[dragState.placementIndex].x : 0;
+  const dragDY = dragState ? dragState.currentY - sheetLayout.placements[dragState.placementIndex].y : 0;
+
+  // Grain-matched groups on this sheet, for their outline and legend line.
+  const sheetGroups = (() => {
+    const byId = new Map<string, number[]>();
+    sheetLayout.placements.forEach((p, i) => {
+      if (p.group) byId.set(p.group.id, [...(byId.get(p.group.id) ?? []), i]);
+    });
+    return [...byId].map(([id, indices]) => ({
+      id,
+      indices,
+      name: grainGroups.find((g) => g.id === id)?.name ?? 'Grain-matched group',
+    }));
+  })();
 
   return (
     <div className="space-y-2">
@@ -528,10 +585,10 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
 
         {/* ── Pieces ───────────────────────────────────────────────────── */}
         {sheetLayout.placements.map((p, i) => {
-          const isDragging = dragState?.placementIndex === i;
+          const isDragging = dragUnit.includes(i);
           const pinned = isPinned(sheetKey, i);
-          const displayX = isDragging ? dragState.currentX : p.x;
-          const displayY = isDragging ? dragState.currentY : p.y;
+          const displayX = isDragging ? p.x + dragDX : p.x;
+          const displayY = isDragging ? p.y + dragDY : p.y;
 
           const px = PADDING + displayX * scale;
           const py = PADDING + displayY * scale;
@@ -571,7 +628,8 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
           // For small pieces, float the button above-left the piece; otherwise inside bottom-left
           const rotateBtnX = smallPiece ? px + rotateBtnSize : px + rotateBtnSize + 3;
           const rotateBtnY = smallPiece ? py - rotateBtnSize - 2 : py + ph - rotateBtnSize - 3;
-          const rotationLocked = !canRotatePlacement(p, grainOf(p.panelId), stockSheet);
+          // Group parts keep their orientation: turning one would break the strip.
+          const rotationLocked = !!p.group || !canRotatePlacement(p, grainOf(p.panelId), stockSheet);
 
           // Hatching shows the grain the cut part will actually have (the
           // sheet's), amber where that contradicts the part's grain setting.
@@ -583,10 +641,14 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
             : null;
 
           const pieceLabel = p.label || `Panel ${i + 1}`;
-          const rotateHint = rotationLocked ? 'rotation is fixed by its grain setting' : 'Enter to rotate';
+          const groupName = p.group ? sheetGroups.find((g) => g.id === p.group!.id)?.name : undefined;
+          const rotateHint = rotationLocked
+            ? p.group ? 'rotation is fixed by its group' : 'rotation is fixed by its grain setting'
+            : 'Enter to rotate';
           const pinHint = pinned ? 'P to unpin' : 'P to pin';
           const pieceDescription =
             `${pieceLabel}, ${fmt(p.width)}${sfx} by ${fmt(p.height)}${sfx}` +
+            `${p.group ? `, part ${p.group.seq} of ${groupName}, moves with its group` : ''}` +
             `${pinned ? ', pinned' : ''}${grainMismatch ? ', placed against its grain setting' : ''}. ` +
             `Use arrow keys to move, ${rotateHint}, ${pinHint}.`;
 
@@ -701,6 +763,8 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
                   style={{ pointerEvents: 'none', userSelect: 'none' }}
                 >
                   {i + 1}
+                  {/* A grain-matched group part also shows its cut order in the group. */}
+                  {p.group && pw >= 30 && <tspan dx={3}>· #{p.group.seq}</tspan>}
                 </text>
               )}
 
@@ -767,6 +831,24 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
                 </>
               )}
             </g>
+          );
+        })}
+
+        {/* ── Grain-matched group outlines ──────────────────────────────── */}
+        {sheetGroups.map((g) => {
+          const shifted = g.indices.map((i) => {
+            const q = sheetLayout.placements[i];
+            return dragUnit.includes(i) ? { ...q, x: q.x + dragDX, y: q.y + dragDY } : q;
+          });
+          const b = boundsOf(shifted);
+          return (
+            <rect
+              key={`group-${g.id}`}
+              x={PADDING + b.x * scale - 2} y={PADDING + b.y * scale - 2}
+              width={b.width * scale + 4} height={b.height * scale + 4}
+              fill="none" stroke="var(--canvas-grain-arrow)" strokeWidth={1.5} strokeDasharray="5 3"
+              rx={3} aria-hidden style={{ pointerEvents: 'none' }}
+            />
           );
         })}
 
@@ -861,6 +943,15 @@ export function SheetCanvas({ sheetLayout, stockSheet, sheetNumber, maxWidth, on
           </p>
         );
       })()}
+
+      {/* ── Grain-matched groups on this sheet ──────────────────────────── */}
+      {sheetGroups.map((g) => (
+        <p key={g.id} className="text-xs text-muted-foreground flex items-center gap-1">
+          <span aria-hidden className="inline-block w-3 h-2 rounded-sm border border-dashed border-current" />
+          {g.name}: {g.indices.length} part{g.indices.length !== 1 ? 's' : ''} cut in order (#1 to #{g.indices.length})
+          from one strip. Drag any part to move the whole group.
+        </p>
+      ))}
 
       {/* ── Piece legend (deduplicated) ──────────────────────────────────── */}
       {(() => {

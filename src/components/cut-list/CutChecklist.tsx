@@ -13,6 +13,7 @@ interface CutChecklistProps {
 
 export function CutChecklist({ solution, stockSheets }: CutChecklistProps) {
   const units = useProjectStore((s) => s.units);
+  const grainGroups = useProjectStore((s) => s.grainGroups);
   const checked = useChecklistStore((s) => s.checked);
   const toggle = useChecklistStore((s) => s.toggle);
   const suffix = unitSuffix(units);
@@ -79,6 +80,11 @@ export function CutChecklist({ solution, stockSheets }: CutChecklistProps) {
                       </td>
                       <td className={`py-1.5 font-medium ${isChecked ? 'line-through text-muted-foreground' : ''}`}>
                         {p.label}
+                        {p.group && (
+                          <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                            {grainGroups.find((g) => g.id === p.group!.id)?.name ?? 'Grain-matched group'} #{p.group.seq}
+                          </span>
+                        )}
                       </td>
                       <td className="py-1.5">
                         {formatDisplay(p.width, units)}{suffix}

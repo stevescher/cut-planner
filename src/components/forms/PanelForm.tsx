@@ -4,14 +4,17 @@ import { useState } from 'react';
 import { useProjectStore } from '@/store/useProjectStore';
 import { NumberInput } from './NumberInput';
 import { Input } from '@/components/ui/input';
-import { Plus, Trash2, Upload, ArrowLeftRight, ArrowUpDown, Shuffle } from 'lucide-react';
+import { Plus, Trash2, Upload, ArrowLeftRight, ArrowUpDown, Shuffle, X } from 'lucide-react';
 import { getColor } from '@/lib/colors';
 import { sheetHasGrain } from '@/lib/grain';
-import { PanelGrain } from '@/lib/optimizer/types';
+import { GroupArrangement, PanelGrain } from '@/lib/optimizer/types';
 import { PanelImport } from './PanelImport';
 
 /** Matches the import validator's ceiling (src/lib/project-io.ts). */
 const MAX_DIMENSION = 10_000;
+
+/** Sentinel option value in the group picker that creates a new group. */
+const NEW_GROUP = '__new__';
 
 /** Grain settings in click order, with how each is shown and described. */
 const GRAIN_STATES: Record<PanelGrain, { next: PanelGrain; Icon: typeof Shuffle; text: string }> = {
@@ -21,7 +24,10 @@ const GRAIN_STATES: Record<PanelGrain, { next: PanelGrain; Icon: typeof Shuffle;
 };
 
 export function PanelForm() {
-  const { panels, addPanel, updatePanel, removePanel, units, stockSheets } = useProjectStore();
+  const {
+    panels, addPanel, updatePanel, removePanel, units, stockSheets,
+    grainGroups, addGrainGroup, updateGrainGroup, removeGrainGroup, setPanelGroup,
+  } = useProjectStore();
   const [showImport, setShowImport] = useState(false);
   const anyGrain = stockSheets.some(sheetHasGrain);
 
@@ -57,6 +63,28 @@ export function PanelForm() {
                 placeholder={`Panel ${idx + 1}`}
                 className="h-7 text-sm border-0 p-0 shadow-none focus-visible:ring-0 bg-transparent"
               />
+              {/* Grain-matched group membership */}
+              <select
+                value={panel.grainGroup ?? ''}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v === NEW_GROUP) addGrainGroup(panel.id);
+                  else setPanelGroup(panel.id, v || undefined);
+                }}
+                title="Grain-matched group: parts cut in sequence from one strip so the grain flows across them"
+                aria-label={`${panel.label || `Panel ${idx + 1}`} grain-matched group`}
+                className={`h-6 max-w-[96px] shrink-0 rounded border px-1 text-[11px] bg-transparent
+                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50
+                  ${panel.grainGroup
+                    ? 'border-primary/50 text-primary font-semibold'
+                    : 'border-transparent text-muted-foreground hover:border-border'}`}
+              >
+                <option value="">No group</option>
+                {grainGroups.map((g) => (
+                  <option key={g.id} value={g.id}>{g.name}</option>
+                ))}
+                <option value={NEW_GROUP}>+ New group</option>
+              </select>
             </div>
 
             {/* Dimensions + controls row */}
@@ -127,6 +155,53 @@ export function PanelForm() {
           </div>
         ))}
       </div>
+
+      {/* Grain-matched groups */}
+      {grainGroups.length > 0 && (
+        <div className="rounded-lg border border-border bg-muted/30 p-2 space-y-1.5 mt-1">
+          <p className="field-label">Grain-matched groups</p>
+          {grainGroups.map((g) => {
+            const count = panels
+              .filter((p) => p.grainGroup === g.id)
+              .reduce((n, p) => n + p.quantity, 0);
+            return (
+              <div key={g.id} className="flex items-center gap-2">
+                <Input
+                  value={g.name}
+                  onChange={(e) => updateGrainGroup(g.id, { name: e.target.value })}
+                  aria-label="Group name"
+                  className="h-7 text-sm flex-1 min-w-0"
+                />
+                <select
+                  value={g.arrangement}
+                  onChange={(e) => updateGrainGroup(g.id, { arrangement: e.target.value as GroupArrangement })}
+                  aria-label={`${g.name} arrangement`}
+                  className="h-7 rounded-md border border-input bg-transparent px-1.5 text-xs dark:bg-input/30"
+                >
+                  <option value="stack">Stacked (drawer bank)</option>
+                  <option value="row">End to end</option>
+                </select>
+                <span className="text-[11px] text-muted-foreground tabular-nums shrink-0">
+                  {count} part{count !== 1 ? 's' : ''}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => removeGrainGroup(g.id)}
+                  aria-label={`Remove ${g.name}; its panels stay, ungrouped`}
+                  title="Remove group (panels stay)"
+                  className="h-6 w-6 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            );
+          })}
+          <p className="text-[11px] text-muted-foreground">
+            Each group is cut in list order from one strip, so the grain flows from part to part.
+            Stacked puts parts side by side across their width; end to end lines them up along their length.
+          </p>
+        </div>
+      )}
 
       {/* Import panel (inline) */}
       {showImport && (

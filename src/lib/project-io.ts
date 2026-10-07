@@ -1,12 +1,14 @@
-import { CutPreference, PanelGrain, ProjectData, SheetGrain } from './optimizer/types';
+import { CutPreference, GroupArrangement, PanelGrain, ProjectData, SheetGrain } from './optimizer/types';
 import { safeFilename } from './safe-export';
+import { GROUP_PANEL_PREFIX } from './optimizer/grain-groups';
 
 const STORAGE_KEY = 'cut-planner-project';
 
 /** Current on-disk schema version. Bump when the shape changes and add a
  *  migration step in migrateProjectData below.
  *  v2: three-state sheet grain ('none' added), per-panel `grain` replacing
- *  `lockRotation`, and a project-level `cutPreference`. */
+ *  `lockRotation`, a project-level `cutPreference`, and grain-matched
+ *  `grainGroups` with per-panel `grainGroup` membership. */
 const CURRENT_VERSION = 2 as const;
 
 const SHEET_GRAINS: readonly SheetGrain[] = ['length', 'width', 'none'];
@@ -14,11 +16,13 @@ const PANEL_GRAINS: readonly PanelGrain[] = ['follow', 'across', 'any'];
 const CUT_PREFERENCES: readonly CutPreference[] = [
   'auto', 'favor-rip', 'always-rip', 'favor-crosscut', 'always-crosscut',
 ];
+const ARRANGEMENTS: readonly GroupArrangement[] = ['stack', 'row'];
 
 /** Shape accepted from disk: any supported version, before migration. */
-type StoredProject = Omit<ProjectData, 'version' | 'cutPreference' | 'stockSheets' | 'panels'> & {
+type StoredProject = Omit<ProjectData, 'version' | 'cutPreference' | 'grainGroups' | 'stockSheets' | 'panels'> & {
   version: number;
   cutPreference?: CutPreference;
+  grainGroups?: ProjectData['grainGroups'];
   stockSheets: Array<Omit<ProjectData['stockSheets'][number], 'grainDirection'> & { grainDirection?: SheetGrain }>;
   panels: Array<Omit<ProjectData['panels'][number], 'grain'> & { grain?: PanelGrain; lockRotation?: boolean }>;
 };
@@ -73,7 +77,8 @@ function validateProjectData(data: unknown): data is StoredProject {
   for (const p of d.panels) {
     if (!p || typeof p !== 'object') return false;
     const panel = p as Record<string, unknown>;
-    if (typeof panel.id !== 'string') return false;
+    // The solver uses ids with this prefix for grain-matched group blocks.
+    if (typeof panel.id !== 'string' || panel.id.startsWith(GROUP_PANEL_PREFIX)) return false;
     if (typeof panel.label !== 'string' || panel.label.length > 200) return false;
     if (!isFinitePositive(panel.length) || (panel.length as number) > MAX_DIMENSION) return false;
     if (!isFinitePositive(panel.width) || (panel.width as number) > MAX_DIMENSION) return false;
@@ -81,6 +86,21 @@ function validateProjectData(data: unknown): data is StoredProject {
     // lockRotation (v1) is optional (migrated on load); reject only a wrong type.
     if (panel.lockRotation !== undefined && typeof panel.lockRotation !== 'boolean') return false;
     if (panel.grain !== undefined && !PANEL_GRAINS.includes(panel.grain as PanelGrain)) return false;
+    if (panel.grainGroup !== undefined && typeof panel.grainGroup !== 'string') return false;
+  }
+
+  if (d.grainGroups !== undefined) {
+    if (!Array.isArray(d.grainGroups) || d.grainGroups.length > 50) return false;
+    const seen = new Set<string>();
+    for (const g of d.grainGroups) {
+      if (!g || typeof g !== 'object') return false;
+      const group = g as Record<string, unknown>;
+      // Ids must be unique: memberships and the solver look groups up by id.
+      if (typeof group.id !== 'string' || seen.has(group.id)) return false;
+      seen.add(group.id);
+      if (typeof group.name !== 'string' || group.name.length > 200) return false;
+      if (!ARRANGEMENTS.includes(group.arrangement as GroupArrangement)) return false;
+    }
   }
 
   if (d.cutPreference !== undefined && !CUT_PREFERENCES.includes(d.cutPreference as CutPreference)) {
@@ -111,11 +131,22 @@ export function saveToLocalStorage(data: ProjectData): boolean {
  */
 function migrateProjectData(data: StoredProject): ProjectData {
   const v1 = data.version < 2;
+  const grainGroups = data.grainGroups ?? [];
+  const groupIds = new Set(grainGroups.map((g) => g.id));
+  // A group's parts share one grain setting (the store keeps them in sync, and
+  // the solver uses the first member's). Normalize a hand-edited file to match.
+  const groupGrain = new Map<string, PanelGrain>();
+  for (const p of data.panels) {
+    if (p.grainGroup && groupIds.has(p.grainGroup) && p.grain && !groupGrain.has(p.grainGroup)) {
+      groupGrain.set(p.grainGroup, p.grain);
+    }
+  }
   return {
     ...data,
     version: CURRENT_VERSION,
     units: data.units ?? 'imperial',
     cutPreference: data.cutPreference ?? 'auto',
+    grainGroups,
     // v1 had no "none" state: an unset grain meant grain along the length, and
     // the overlay treated it that way. Keep that for old saves so their layouts
     // don't change; new sheets default to 'none' in the store.
@@ -125,9 +156,14 @@ function migrateProjectData(data: StoredProject): ProjectData {
     })),
     // v1 lockRotation=true kept a panel's length along the sheet length, which
     // is 'follow' on a length-grain sheet; an unlocked panel rotated freely.
-    panels: data.panels.map(({ lockRotation, ...p }) => ({
+    panels: data.panels.map(({ lockRotation, grainGroup, ...p }) => ({
       ...p,
-      grain: p.grain ?? (lockRotation ? 'follow' : v1 ? 'any' : 'follow'),
+      grain:
+        (grainGroup ? groupGrain.get(grainGroup) : undefined) ??
+        p.grain ??
+        (lockRotation ? 'follow' : v1 ? 'any' : 'follow'),
+      // Drop a membership that points at a group the file doesn't define.
+      ...(grainGroup && groupIds.has(grainGroup) ? { grainGroup } : {}),
     })),
   };
 }

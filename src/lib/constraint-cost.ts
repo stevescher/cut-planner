@@ -1,4 +1,4 @@
-import { CutPreference, Panel, Solution, StockSheet } from './optimizer/types';
+import { CutPreference, GrainGroup, Panel, Solution, StockSheet } from './optimizer/types';
 import { computeCost } from './cost';
 import { sheetHasGrain } from './grain';
 
@@ -14,6 +14,7 @@ export interface ConstraintDelta {
 
 export interface ConstraintCosts {
   grain?: ConstraintDelta;
+  groups?: ConstraintDelta;
   cutOrder?: ConstraintDelta;
 }
 
@@ -28,6 +29,12 @@ export function grainIsActive(stockSheets: StockSheet[], panels: Panel[]): boole
 /** The same panels with grain released, for the relaxed comparison solve. */
 export function relaxGrain(panels: Panel[]): Panel[] {
   return panels.map((p) => ({ ...p, grain: 'any' as const }));
+}
+
+/** True when some defined grain-matched group has a member panel. */
+export function groupsAreActive(panels: Panel[], groups: GrainGroup[]): boolean {
+  const ids = new Set(groups.map((g) => g.id));
+  return panels.some((p) => p.grainGroup !== undefined && ids.has(p.grainGroup));
 }
 
 export function cutOrderIsActive(pref: CutPreference): boolean {

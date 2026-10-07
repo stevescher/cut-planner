@@ -8,6 +8,8 @@ import {
   PackingStrategy,
   GuillotineNode,
   CutPreference,
+  GrainGroup,
+  Placement,
 } from './types';
 import { createTree, placeInTree, collectPlacements, FIT_EPS } from './guillotine';
 import { deriveCutSequenceFromPlacements } from './reoptimize';
@@ -16,6 +18,13 @@ import { getColor } from '../colors';
 import { solverOrientations } from '../grain';
 import { evaluateCutOrder, isHardCutPreference, preferredFirstCut } from './cut-order';
 import { improveSolution, scoreSolution, compareScores } from './improve';
+import {
+  GroupBlock,
+  GROUP_PANEL_PREFIX,
+  buildGroupBlocks,
+  expandBlock,
+  groupedPanelIds,
+} from './grain-groups';
 
 interface ExpandedPanel {
   panelId: string;
@@ -24,6 +33,8 @@ interface ExpandedPanel {
   width: number;
   originalIndex: number;
   grain: PanelGrain;
+  /** Set when this item stands for a whole grain-matched group. */
+  block?: GroupBlock;
 }
 
 interface OpenSheet {
@@ -34,10 +45,26 @@ interface OpenSheet {
   usableWidth: number;
 }
 
-/** Expand panels by quantity into individual items */
-function expandPanels(panels: Panel[]): ExpandedPanel[] {
+/**
+ * Expand panels by quantity into individual items. Each grain-matched group
+ * becomes one item sized to the whole group, in place of its members.
+ */
+function expandPanels(panels: Panel[], blocks: GroupBlock[]): ExpandedPanel[] {
   const expanded: ExpandedPanel[] = [];
+  const grouped = groupedPanelIds(blocks);
+  for (const block of blocks) {
+    expanded.push({
+      panelId: `${GROUP_PANEL_PREFIX}${block.group.id}`,
+      label: block.group.name,
+      length: block.length,
+      width: block.width,
+      originalIndex: block.members[0].panelIndex,
+      grain: block.grain,
+      block,
+    });
+  }
   panels.forEach((panel, idx) => {
+    if (grouped.has(panel.id)) return;
     for (let q = 0; q < panel.quantity; q++) {
       expanded.push({
         panelId: panel.id,
@@ -66,9 +93,11 @@ function solveWithStrategy(
   panels: Panel[],
   kerf: number,
   strategy: PackingStrategy,
-  cutPreference: CutPreference
+  cutPreference: CutPreference,
+  blocks: GroupBlock[]
 ): Solution {
-  const expanded = expandPanels(panels.filter((p) => p.length > 0 && p.width > 0));
+  const expanded = expandPanels(panels.filter((p) => p.length > 0 && p.width > 0), blocks);
+  const blockById = new Map(blocks.map((b) => [`${GROUP_PANEL_PREFIX}${b.group.id}`, b]));
 
   // Sort panels according to strategy
   const sortable = expanded.map((p, i) => ({
@@ -175,9 +204,19 @@ function solveWithStrategy(
     }
 
     if (!placed) {
-      unplacedCounts.set(panel.panelId, (unplacedCounts.get(panel.panelId) ?? 0) + 1);
+      // An unplaced group leaves every one of its parts unplaced.
+      for (const m of panel.block?.members ?? [{ panel: { id: panel.panelId } }]) {
+        unplacedCounts.set(m.panel.id, (unplacedCounts.get(m.panel.id) ?? 0) + 1);
+      }
     }
   }
+
+  /** Split any placed group block back into its member parts. */
+  const expandGroupPlacements = (placements: Placement[]): Placement[] =>
+    placements.flatMap((p) => {
+      const block = blockById.get(p.panelId);
+      return block ? expandBlock(block, p, getColor) : [p];
+    });
 
   // Build unplaced list: quantity = number of unplaced instances (not original qty)
   const unplaced: Panel[] = [];
@@ -188,7 +227,7 @@ function solveWithStrategy(
 
   // Build sheet layouts
   const sheetLayouts: SheetLayout[] = openSheets.map((os) => {
-    const placements = collectPlacements(os.tree);
+    const placements = expandGroupPlacements(collectPlacements(os.tree));
     const { steps: cutSequence, isApproximate: cutSequenceApproximate } =
       deriveCutSequenceFromPlacements(placements, os.stockSheet.length, os.stockSheet.width, {
         left: os.stockSheet.trimLeft,
@@ -245,8 +284,10 @@ export function solveAll(config: {
   panels: Panel[];
   kerf: number;
   cutPreference?: CutPreference;
+  grainGroups?: GrainGroup[];
 }): Solution[] {
   const cutPreference = config.cutPreference ?? 'auto';
+  const blocks = buildGroupBlocks(config.panels, config.grainGroups, config.kerf);
   const firstCut = preferredFirstCut(cutPreference);
   const base = generateStrategies();
   // With a cut-order preference, also run every strategy in strip mode for the
@@ -270,7 +311,8 @@ export function solveAll(config: {
         config.panels,
         config.kerf,
         strategy,
-        cutPreference
+        cutPreference,
+        blocks
       );
       solutions.push(solution);
     } catch (e) {

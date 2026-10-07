@@ -34,6 +34,7 @@ function baseProject(overrides: Partial<ProjectData> = {}): ProjectData {
     kerf: 0.125,
     units: 'imperial',
     cutPreference: 'auto',
+    grainGroups: [],
     savedAt: '2026-01-01T00:00:00.000Z',
     ...overrides,
   };

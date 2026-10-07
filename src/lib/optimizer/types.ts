@@ -26,6 +26,25 @@ export type CutPreference =
   | 'favor-crosscut'
   | 'always-crosscut';
 
+/**
+ * How a grain-matched group's parts sit next to each other when cut from one
+ * strip. 'stack' puts them side by side across their width, like a drawer
+ * bank whose figure flows from one front to the next; 'row' puts them end to
+ * end along their length.
+ */
+export type GroupArrangement = 'stack' | 'row';
+
+/**
+ * A set of panels cut in sequence from one strip so the grain flows
+ * continuously across them. Members are the panels whose `grainGroup` is this
+ * id, in panel-list order, each repeated by its quantity.
+ */
+export interface GrainGroup {
+  id: string;
+  name: string;
+  arrangement: GroupArrangement;
+}
+
 /** A stock sheet definition from user input */
 export interface StockSheet {
   id: string;
@@ -52,6 +71,8 @@ export interface Panel {
   quantity: number;
   /** How this panel's grain must sit on a grained sheet. See PanelGrain. */
   grain: PanelGrain;
+  /** Id of the GrainGroup this panel belongs to, if any. */
+  grainGroup?: string;
 }
 
 /** A panel placed on a specific sheet */
@@ -65,6 +86,8 @@ export interface Placement {
   rotated: boolean;
   pinned: boolean;
   color: string;
+  /** Set on parts of a grain-matched group: the group id and the 1-based cut order. */
+  group?: { id: string; seq: number };
 }
 
 /** A single cut step in the cutting sequence */
@@ -221,6 +244,7 @@ export interface ProjectData {
   panels: Panel[];
   kerf: number;
   cutPreference: CutPreference;
+  grainGroups: GrainGroup[];
   units: 'imperial' | 'metric';
   savedAt: string;
 }

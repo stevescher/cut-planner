@@ -36,8 +36,9 @@ A web-based plywood and sheet goods cutlist optimizer. Enter your stock sheet di
 | **Panel entry** | Label, length, width, quantity. Color-coded dots match layout colors |
 | **Kerf setting** | Blade kerf in inches or mm — deducted from every cut edge automatically |
 | **Grain direction** | Each stock sheet's grain runs along its length, along its width, or none (MDF, particleboard, solid melamine). Each panel's grain runs along its length, across it, or doesn't matter (hidden parts), and the optimizer only places parts in orientations their grain allows |
+| **Grain-matched groups** | Put panels (for example a bank of drawer fronts) in a group and they are cut in list order from one strip, stacked side by side or end to end, so the grain flows from part to part. The group is placed, re-planned and dragged as one block |
 | **First cut** | Auto, Favor or Always rip-first, Favor or Always crosscut-first. "Favor" never costs a sheet; "Always" is required even at a material cost |
-| **Constraint cost** | After planning, re-solves without the grain and first-cut settings and shows what each costs (for example "+1 sheet (+$68.00)") |
+| **Constraint cost** | After planning, re-solves without each of the grain, grain-matched group and first-cut settings and shows what each costs (for example "+1 sheet (+$68.00)") |
 | **Plan Cuts** | Runs 15 packing strategies simultaneously, returns top results sorted by waste |
 | **Layout alternatives** | Up to 5 solutions shown as numbered pills; "More Layouts" pill (next to the numbered pills) reveals additional strategies |
 | **Zoom** | − / % / + zoom controls (50–300%) in the diagram top bar; scales all sheet canvases |
@@ -512,4 +513,3 @@ Vercel reads the `build` script from `package.json`:
 | **Remnant tracking** | Mark offcuts as new stock sheets for future projects |
 | **CSV/Excel import** | Bulk panel entry from a spreadsheet |
 | **Edge banding** | Tag which panel edges need banding; surface in the cut list |
-| **Grain-matched groups** | Keep drawer fronts in sequence from one strip so the figure flows across the bank |

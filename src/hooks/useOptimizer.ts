@@ -11,6 +11,7 @@ import {
   constraintDelta,
   cutOrderIsActive,
   grainIsActive,
+  groupsAreActive,
   relaxGrain,
 } from '@/lib/constraint-cost';
 
@@ -56,7 +57,7 @@ export function useOptimizer() {
   }, []);
 
   const optimize = useCallback(async () => {
-    const { stockSheets, panels, kerf, cutPreference } = useProjectStore.getState();
+    const { stockSheets, panels, kerf, cutPreference, grainGroups } = useProjectStore.getState();
     const { setOptimizing, setSolutions, setConstraintCosts } = useLayoutStore.getState();
     const run = ++runRef.current;
 
@@ -68,7 +69,7 @@ export function useOptimizer() {
     setOptimizing(true);
     let best;
     try {
-      const solutions = await solve({ stockSheets, panels, kerf, cutPreference });
+      const solutions = await solve({ stockSheets, panels, kerf, cutPreference, grainGroups });
       setSolutions(solutions);
       best = solutions[0];
     } catch (e) {
@@ -83,16 +84,23 @@ export function useOptimizer() {
     // since it doubles or triples the solver work.
     if (!best) return;
     const grainOn = grainIsActive(stockSheets, panels);
+    const groupsOn = groupsAreActive(panels, grainGroups);
     const cutOrderOn = cutOrderIsActive(cutPreference);
-    if (!grainOn && !cutOrderOn) return;
+    if (!grainOn && !groupsOn && !cutOrderOn) return;
     try {
       const costs: ConstraintCosts = {};
+      // Each comparison relaxes one setting and keeps the others, so the
+      // readout says what that setting alone costs.
       if (grainOn) {
-        const relaxed = await solve({ stockSheets, panels: relaxGrain(panels), kerf, cutPreference });
+        const relaxed = await solve({ stockSheets, panels: relaxGrain(panels), kerf, cutPreference, grainGroups });
         if (relaxed[0]) costs.grain = constraintDelta(best, relaxed[0], stockSheets);
       }
+      if (groupsOn) {
+        const relaxed = await solve({ stockSheets, panels, kerf, cutPreference, grainGroups: [] });
+        if (relaxed[0]) costs.groups = constraintDelta(best, relaxed[0], stockSheets);
+      }
       if (cutOrderOn) {
-        const relaxed = await solve({ stockSheets, panels, kerf, cutPreference: 'auto' });
+        const relaxed = await solve({ stockSheets, panels, kerf, cutPreference: 'auto', grainGroups });
         if (relaxed[0]) costs.cutOrder = constraintDelta(best, relaxed[0], stockSheets);
       }
       // Skip if a newer plan started, or an anchored re-plan replaced the

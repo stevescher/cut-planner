@@ -12,7 +12,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { LayoutGrid, ClipboardList, Anchor, RefreshCw, ZoomIn, ZoomOut, AlertTriangle, PlusCircle, Shuffle, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useViewStore, ZOOM_MIN, ZOOM_MAX, ZOOM_STEP } from '@/store/useViewStore';
 import { useOptimizer } from '@/hooks/useOptimizer';
-import { Panel, StockSheet, Solution } from '@/lib/optimizer/types';
+import { GrainGroup, Panel, StockSheet, Solution } from '@/lib/optimizer/types';
+import { buildGroupBlocks } from '@/lib/optimizer/grain-groups';
 import { formatDisplay, unitSuffix } from '@/lib/fractions';
 import { computeCost, formatCurrency } from '@/lib/cost';
 import { allowedOrientations } from '@/lib/grain';
@@ -48,12 +49,35 @@ export interface SheetSuggestion {
 
 export function suggestFixes(
   solution: Solution,
-  stockSheets: StockSheet[]
+  stockSheets: StockSheet[],
+  context: { panels?: Panel[]; grainGroups?: GrainGroup[]; kerf?: number } = {}
 ): { suggestions: SheetSuggestion[]; unfittable: Panel[] } {
   const groups = new Map<string, { sheet: StockSheet; entries: Array<{ panel: Panel; unplacedCount: number }> }>();
   const unfittable: Panel[] = [];
 
+  // A grain-matched group is placed as one block, so judge its unplaced parts
+  // by the block's size: list the group once, as a stand-in panel the size of
+  // the whole block.
+  const blocks = buildGroupBlocks(context.panels ?? [], context.grainGroups, context.kerf ?? 0);
+  const blockOf = new Map(blocks.flatMap((b) => b.members.map((m) => [m.panel.id, b] as const)));
+  const unplaced: Panel[] = [];
+  const seenBlocks = new Set<string>();
   for (const panel of solution.unplacedPanels) {
+    const block = blockOf.get(panel.id);
+    if (!block) { unplaced.push(panel); continue; }
+    if (seenBlocks.has(block.group.id)) continue;
+    seenBlocks.add(block.group.id);
+    unplaced.push({
+      id: `group:${block.group.id}`,
+      label: `${block.group.name} (grain-matched group)`,
+      length: block.length,
+      width: block.width,
+      quantity: 1,
+      grain: block.grain,
+    });
+  }
+
+  for (const panel of unplaced) {
     // panel.quantity now equals the number of unplaced instances (set by solver)
     const unplacedCount = panel.quantity;
     if (unplacedCount <= 0) continue;
@@ -106,7 +130,7 @@ export function suggestFixes(
 export function LayoutViewer() {
   const { solutions, activeSolutionIndex, revealedCount, setActive, setSolutions, shuffleNext, constraintCosts } =
     useLayoutStore();
-  const { stockSheets, panels, kerf, updateStockSheet, units, cutPreference } = useProjectStore();
+  const { stockSheets, panels, kerf, updateStockSheet, units, cutPreference, grainGroups } = useProjectStore();
   const { pinnedPieces, clearPins } = useDragStore();
   const { zoom, setZoom } = useViewStore();
   const optimize = useOptimizer();
@@ -363,7 +387,7 @@ export function LayoutViewer() {
 
       {/* ── Unplaced panel banner ─────────────────────────────────────── */}
       {activeSolution?.unplacedPanels.length > 0 && view === 'diagram' && (() => {
-        const { suggestions, unfittable } = suggestFixes(activeSolution, stockSheets);
+        const { suggestions, unfittable } = suggestFixes(activeSolution, stockSheets, { panels, grainGroups, kerf });
         const totalUnplaced = activeSolution.unplacedPanels.reduce((s, p) => s + p.quantity, 0);
         return (
           <div
@@ -481,12 +505,18 @@ export function LayoutViewer() {
                 })()}
 
                 {/* What grain and cut-order settings cost, versus the best plan without them */}
-                {constraintCosts && (constraintCosts.grain || constraintCosts.cutOrder) && (
+                {constraintCosts && (constraintCosts.grain || constraintCosts.groups || constraintCosts.cutOrder) && (
                   <div className="text-xs text-muted-foreground space-y-0.5" data-testid="constraint-costs">
                     {constraintCosts.grain && (
                       <p>
                         <span className="font-semibold text-foreground">Grain rules:</span>{' '}
                         {describeDelta(constraintCosts.grain)}
+                      </p>
+                    )}
+                    {constraintCosts.groups && (
+                      <p>
+                        <span className="font-semibold text-foreground">Grain-matched groups:</span>{' '}
+                        {describeDelta(constraintCosts.groups)}
                       </p>
                     )}
                     {constraintCosts.cutOrder && activeSolution.cutOrder && (

@@ -374,3 +374,47 @@ describe('reOptimizeAroundPinned respects panel grain (OPUS-401)', () => {
     expect(placed[0].height).toBeCloseTo(40, 6);
   });
 });
+
+describe('reOptimizeAroundPinned reports pieces it cannot re-place', () => {
+  it('lists a floating piece that no longer fits as unplaced instead of dropping it', () => {
+    // 48 x 48 sheet. A pinned 30 x 30 part dragged to the middle leaves no
+    // 30 x 30 hole for the other one, which is floating.
+    const stock = sheet({ id: 's1', length: 48, width: 48 });
+    const panels = [
+      panel({ id: 'a', label: 'A', length: 30, width: 30, quantity: 1 }),
+      panel({ id: 'b', label: 'B', length: 30, width: 30, quantity: 1 }),
+    ];
+    const solution: Solution = {
+      id: 'sol', strategyName: 'test', totalWaste: 0, totalSheets: 1, unplacedPanels: [],
+      sheets: [{
+        stockSheetId: 's1', sheetIndex: 0, wastePercent: 0, usedArea: 0, cutSequence: [],
+        placements: [
+          { panelId: 'a', label: 'A', x: 9, y: 9, width: 30, height: 30, rotated: false, pinned: true, color: '#111' },
+          { panelId: 'b', label: 'B', x: 0, y: 0, width: 30, height: 30, rotated: false, pinned: false, color: '#222' },
+        ],
+      }],
+    };
+    const out = reOptimizeAroundPinned(solution, [stock], new Set(['s1-0:0']), 0.125, panels);
+    const placedIds = out.sheets.flatMap((s) => s.placements.map((p) => p.panelId));
+    expect(placedIds).toEqual(['a']);
+    expect(out.unplacedPanels).toEqual([expect.objectContaining({ id: 'b', quantity: 1 })]);
+  });
+
+  it('adds to the quantity of a panel that was already unplaced', () => {
+    const stock = sheet({ id: 's1', length: 48, width: 48 });
+    const b = panel({ id: 'b', label: 'B', length: 30, width: 30, quantity: 3 });
+    const solution: Solution = {
+      id: 'sol', strategyName: 'test', totalWaste: 0, totalSheets: 1,
+      unplacedPanels: [{ ...b, quantity: 1 }],
+      sheets: [{
+        stockSheetId: 's1', sheetIndex: 0, wastePercent: 0, usedArea: 0, cutSequence: [],
+        placements: [
+          { panelId: 'a', label: 'A', x: 9, y: 9, width: 30, height: 30, rotated: false, pinned: true, color: '#111' },
+          { panelId: 'b', label: 'B', x: 0, y: 0, width: 30, height: 30, rotated: false, pinned: false, color: '#222' },
+        ],
+      }],
+    };
+    const out = reOptimizeAroundPinned(solution, [stock], new Set(['s1-0:0']), 0.125, [b]);
+    expect(out.unplacedPanels).toEqual([expect.objectContaining({ id: 'b', quantity: 2 })]);
+  });
+});
